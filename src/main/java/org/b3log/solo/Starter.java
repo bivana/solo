@@ -18,10 +18,12 @@
 package org.b3log.solo;
 
 import org.apache.commons.cli.*;
+import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.util.Strings;
+import org.b3log.solo.util.DesUtils;
 import org.eclipse.jetty.server.Server;
 import org.eclipse.jetty.util.log.Log;
 import org.eclipse.jetty.util.log.Slf4jLog;
@@ -119,7 +121,7 @@ public final class Starter {
 
         String portArg = commandLine.getOptionValue("listen_port");
         if (!Strings.isNumeric(portArg)) {
-            portArg = "8080";
+            portArg = "8129";
         }
 
         try {
@@ -128,6 +130,11 @@ public final class Starter {
             logger.log(Level.ERROR, "Latke init failed, please configure latke.props or run with args, visit https://hacpai.com/article/1492881378588 for more details");
 
             System.exit(-1);
+        }
+
+        if(StringUtils.isNotEmpty(Latkes.getLocalProperty("jdbc.password"))){
+            DesUtils desUtils=new DesUtils();
+            Latkes.setLocalProperty("jdbc.password",desUtils.decrypt(Latkes.getLocalProperty("jdbc.password")));
         }
 
         String serverScheme = commandLine.getOptionValue("server_scheme");
