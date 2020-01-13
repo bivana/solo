@@ -18,26 +18,31 @@
 package org.b3log.solo.processor;
 
 import freemarker.template.Template;
+import org.apache.commons.io.IOUtils;
 import org.b3log.latke.Keys;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.http.Response;
+import org.b3log.latke.http.annotation.RequestProcessing;
+import org.b3log.latke.http.annotation.RequestProcessor;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.http.renderer.TextHtmlRenderer;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
 import org.b3log.latke.util.Locales;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.service.DataModelService;
 import org.b3log.solo.service.OptionQueryService;
 import org.b3log.solo.service.StatisticMgmtService;
+import org.b3log.solo.util.Markdowns;
 import org.b3log.solo.util.Skins;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
+import java.io.InputStream;
+import java.nio.charset.StandardCharsets;
 import java.util.Map;
 
 /**
@@ -48,7 +53,7 @@ import java.util.Map;
  * </p>
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.0.0.10, Jan 5, 2019
+ * @version 1.0.0.12, Jan 3, 2020
  * @since 0.4.5
  */
 @RequestProcessor
@@ -92,16 +97,31 @@ public class UserTemplateProcessor {
     public void showPage(final RequestContext context) {
         final String requestURI = context.requestURI();
         final String templateName = context.pathVar("name") + ".ftl";
+        if ("/CHANGE_LOGS.html".equals(requestURI)) {
+            try {
+                final TextHtmlRenderer renderer = new TextHtmlRenderer();
+                context.setRenderer(renderer);
+                try (final InputStream resourceAsStream = UserTemplateProcessor.class.getResourceAsStream("/CHANGE_LOGS.md")) {
+                    final String content = IOUtils.toString(resourceAsStream, StandardCharsets.UTF_8);
+                    renderer.setContent(Markdowns.toHTML(content));
+                }
+            } catch (final Exception e) {
+                LOGGER.log(Level.ERROR, "Renders CHANGE_LOGS failed", e);
+            }
+
+            return;
+        }
+
         LOGGER.log(Level.DEBUG, "Shows page [requestURI={0}, templateName={1}]", requestURI, templateName);
 
-        final HttpServletRequest request = context.getRequest();
-        final HttpServletResponse response = context.getResponse();
+        final Request request = context.getRequest();
+        final Response response = context.getResponse();
         final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, templateName);
 
         final Map<String, Object> dataModel = renderer.getDataModel();
         final Template template = Skins.getSkinTemplate(context, templateName);
         if (null == template) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
@@ -119,7 +139,7 @@ public class UserTemplateProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 }

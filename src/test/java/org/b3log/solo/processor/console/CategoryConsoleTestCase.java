@@ -20,16 +20,13 @@ package org.b3log.solo.processor.console;
 import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.solo.AbstractTestCase;
-import org.b3log.solo.MockHttpServletRequest;
-import org.b3log.solo.MockHttpServletResponse;
+import org.b3log.solo.MockRequest;
+import org.b3log.solo.MockResponse;
 import org.b3log.solo.model.Category;
 import org.b3log.solo.model.Common;
 import org.json.JSONObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import java.io.BufferedReader;
-import java.io.StringReader;
 
 /**
  * {@link CategoryConsole} test case.
@@ -43,11 +40,9 @@ public class CategoryConsoleTestCase extends AbstractTestCase {
 
     /**
      * Init.
-     *
-     * @throws Exception exception
      */
     @Test
-    public void init() throws Exception {
+    public void init() {
         super.init();
     }
 
@@ -58,22 +53,20 @@ public class CategoryConsoleTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "init")
     public void addCategory() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/category/");
         request.setMethod("POST");
         final JSONObject requestJSON = new JSONObject();
         requestJSON.put(Category.CATEGORY_T_TAGS, "Solo");
         requestJSON.put(Category.CATEGORY_TITLE, "分类1");
         requestJSON.put(Category.CATEGORY_URI, "cate1");
-
-        final BufferedReader reader = new BufferedReader(new StringReader(requestJSON.toString()));
-        request.setReader(reader);
+        request.setJSON(requestJSON);
 
         mockAdminLogin(request);
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -86,16 +79,16 @@ public class CategoryConsoleTestCase extends AbstractTestCase {
     public void getCategory() throws Exception {
         final JSONObject category = getCategoryQueryService().getByTitle("分类1");
 
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/category/" + category.optString(Keys.OBJECT_ID));
         request.setMethod("GET");
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -106,7 +99,7 @@ public class CategoryConsoleTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "addCategory")
     public void updateCategory() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/category/");
         request.setMethod("PUT");
         final JSONObject requestJSON = new JSONObject();
@@ -114,15 +107,14 @@ public class CategoryConsoleTestCase extends AbstractTestCase {
         JSONObject category = getCategoryQueryService().getByTitle("分类1");
         requestJSON.put(Keys.OBJECT_ID, category.optString(Keys.OBJECT_ID));
         requestJSON.put(Category.CATEGORY_TITLE, "新的分类1");
-        final BufferedReader reader = new BufferedReader(new StringReader(requestJSON.toString()));
-        request.setReader(reader);
+        request.setJSON(requestJSON);
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
 
         category = getCategoryQueryService().getByTitle("分类1");
@@ -140,16 +132,16 @@ public class CategoryConsoleTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "updateCategory")
     public void getCategories() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/categories/1/10/20");
         request.setMethod("GET");
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -162,21 +154,20 @@ public class CategoryConsoleTestCase extends AbstractTestCase {
     public void changeOrder() throws Exception {
         final JSONObject category = getCategoryQueryService().getByTitle("新的分类1");
 
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/category/order/");
         request.setMethod("PUT");
         final JSONObject requestJSON = new JSONObject();
         requestJSON.put(Keys.OBJECT_ID, category.optString(Keys.OBJECT_ID));
         requestJSON.put(Common.DIRECTION, "up");
-        final BufferedReader reader = new BufferedReader(new StringReader(requestJSON.toString()));
-        request.setReader(reader);
+        request.setJSON(requestJSON);
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -189,16 +180,16 @@ public class CategoryConsoleTestCase extends AbstractTestCase {
     public void removeCategory() throws Exception {
         final JSONObject category = getCategoryQueryService().getByTitle("新的分类1");
 
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/category/" + category.optString(Keys.OBJECT_ID));
         request.setMethod("DELETE");
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 }

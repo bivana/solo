@@ -40,15 +40,13 @@ import org.b3log.solo.repository.UserRepository;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletResponse;
-
 /**
  * User management service.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
  * @author <a href="https://hacpai.com/member/DASHU">DASHU</a>
  * @author <a href="https://github.com/nanolikeyou">nanolikeyou</a>
- * @version 1.1.0.18, Mar 27, 2019
+ * @version 1.1.0.19, Jun 6, 2019
  * @since 0.4.0
  */
 @Service
@@ -117,7 +115,7 @@ public class UserMgmtService {
             final HttpResponse res = HttpRequest.post("https://hacpai.com/user/usite").trustAllCerts(true).
                     connectionTimeout(3000).timeout(7000).header("User-Agent", Solos.USER_AGENT).
                     body(requestJSON.toString()).send();
-            if (HttpServletResponse.SC_OK != res.statusCode()) {
+            if (200 != res.statusCode()) {
                 return;
             }
             res.charset("UTF-8");
@@ -235,7 +233,7 @@ public class UserMgmtService {
                 oldUser.put(User.USER_ROLE, Role.VISITOR_ROLE);
             }
 
-            userRepository.update(userId, oldUser);
+            userRepository.update(userId, oldUser, User.USER_ROLE);
 
             transaction.commit();
         } catch (final RepositoryException e) {

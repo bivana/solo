@@ -17,37 +17,36 @@
  */
 package org.b3log.solo.service;
 
+import org.b3log.latke.http.Cookie;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.http.Response;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.repository.RepositoryException;
-import org.b3log.latke.repository.Transaction;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
-import org.b3log.latke.servlet.RequestContext;
 import org.b3log.latke.util.Requests;
 import org.b3log.latke.util.URLs;
 import org.b3log.solo.cache.StatisticCache;
-import org.b3log.solo.model.Option;
 import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.repository.OptionRepository;
 import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
 import java.util.Iterator;
 import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * Statistic management service.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 2.0.1.3, Jan 28, 2019
+ * @version 2.0.1.5, Jan 8, 2020
  * @since 0.5.0
  */
 @Service
@@ -137,29 +136,26 @@ public class StatisticMgmtService {
      * @param response the specified response
      * @return {@code true} if the specified request has been served, returns {@code false} otherwise
      */
-    public static boolean hasBeenServed(final RequestContext context, final HttpServletResponse response) {
-        final HttpServletRequest request = context.getRequest();
-        final Cookie[] cookies = request.getCookies();
-        if (null == cookies || 0 == cookies.length) {
+    public static boolean hasBeenServed(final RequestContext context, final Response response) {
+        final Request request = context.getRequest();
+        final Set<Cookie> cookies = request.getCookies();
+        if (cookies.isEmpty()) {
             return false;
         }
 
-        Cookie cookie;
         boolean needToCreate = true;
         boolean needToAppend = true;
         JSONArray cookieJSONArray = null;
 
         try {
-            for (int i = 0; i < cookies.length; i++) {
-                cookie = cookies[i];
-
+            for (final Cookie cookie : cookies) {
                 if (!"visited".equals(cookie.getName())) {
                     continue;
                 }
 
                 final String value = URLs.decode(cookie.getValue());
                 cookieJSONArray = new JSONArray(value);
-                if (null == cookieJSONArray || 0 == cookieJSONArray.length()) {
+                if (0 == cookieJSONArray.length()) {
                     return false;
                 }
 
@@ -167,9 +163,7 @@ public class StatisticMgmtService {
 
                 for (int j = 0; j < cookieJSONArray.length(); j++) {
                     final String visitedURL = cookieJSONArray.optString(j);
-
                     if (request.getRequestURI().equals(visitedURL)) {
-                        needToAppend = false;
                         return true;
                     }
                 }
@@ -192,10 +186,9 @@ public class StatisticMgmtService {
         } catch (final Exception e) {
             LOGGER.log(Level.WARN, "Parses cookie failed, clears the cookie[name=visited]");
 
-            final Cookie c = new Cookie("visited", null);
+            final Cookie c = new Cookie("visited", "");
             c.setMaxAge(0);
             c.setPath("/");
-
             response.addCookie(c);
         }
 
@@ -215,41 +208,43 @@ public class StatisticMgmtService {
      * @param response the specified response
      * @throws ServiceException service exception
      */
-    public void incBlogViewCount(final RequestContext context, final HttpServletResponse response) throws ServiceException {
-        if (Solos.isBot(context.getRequest())) {
-            return;
-        }
+    public void incBlogViewCount(final RequestContext context, final Response response) throws ServiceException {
+        // v3.7.0 后开始使用社区浏览计数服务 https://github.com/Vanessa219/uvstat
 
-        if (hasBeenServed(context, response)) {
-            return;
-        }
-
-        final Transaction transaction = optionRepository.beginTransaction();
-        JSONObject statistic;
-        try {
-            statistic = optionRepository.get(Option.ID_C_STATISTIC_BLOG_VIEW_COUNT);
-            if (null == statistic) {
-                return;
-            }
-
-            LOGGER.log(Level.TRACE, "Before inc blog view count is [{0}]", statistic);
-
-            statistic.put(Option.OPTION_VALUE, statistic.optInt(Option.OPTION_VALUE) + 1);
-
-            updateStatistic(Option.ID_C_STATISTIC_BLOG_VIEW_COUNT, statistic);
-
-            transaction.commit();
-        } catch (final RepositoryException e) {
-            if (transaction.isActive()) {
-                transaction.rollback();
-            }
-
-            LOGGER.log(Level.ERROR, "Updates blog view count failed", e);
-
-            return;
-        }
-
-        LOGGER.log(Level.TRACE, "Inced blog view count[statistic={0}]", statistic);
+//        if (Solos.isBot(context.getRequest())) {
+//            return;
+//        }
+//
+//        if (hasBeenServed(context, response)) {
+//            return;
+//        }
+//
+//        final Transaction transaction = optionRepository.beginTransaction();
+//        JSONObject statistic;
+//        try {
+//            statistic = optionRepository.get(Option.ID_C_STATISTIC_BLOG_VIEW_COUNT);
+//            if (null == statistic) {
+//                return;
+//            }
+//
+//            LOGGER.log(Level.TRACE, "Before inc blog view count is [{0}]", statistic);
+//
+//            statistic.put(Option.OPTION_VALUE, statistic.optInt(Option.OPTION_VALUE) + 1);
+//
+//            updateStatistic(Option.ID_C_STATISTIC_BLOG_VIEW_COUNT, statistic);
+//
+//            transaction.commit();
+//        } catch (final RepositoryException e) {
+//            if (transaction.isActive()) {
+//                transaction.rollback();
+//            }
+//
+//            LOGGER.log(Level.ERROR, "Updates blog view count failed", e);
+//
+//            return;
+//        }
+//
+//        LOGGER.log(Level.TRACE, "Inced blog view count[statistic={0}]", statistic);
     }
 
     /**
@@ -257,7 +252,7 @@ public class StatisticMgmtService {
      *
      * @param request the specified request
      */
-    public void onlineVisitorCount(final HttpServletRequest request) {
+    public void onlineVisitorCount(final Request request) {
         if (Solos.isBot(request)) {
             return;
         }

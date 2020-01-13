@@ -21,22 +21,19 @@ import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.repository.Query;
 import org.b3log.solo.AbstractTestCase;
-import org.b3log.solo.MockHttpServletRequest;
-import org.b3log.solo.MockHttpServletResponse;
+import org.b3log.solo.MockRequest;
+import org.b3log.solo.MockResponse;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Link;
 import org.json.JSONObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import java.io.BufferedReader;
-import java.io.StringReader;
-
 /**
  * {@link LinkConsole} test case.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.0.0.0, Dec 11, 2018
+ * @version 1.0.0.1, Oct 23, 2019
  * @since 2.9.8
  */
 @Test(suiteName = "processor")
@@ -44,11 +41,9 @@ public class LinkConsoleTestCase extends AbstractTestCase {
 
     /**
      * Init.
-     *
-     * @throws Exception exception
      */
     @Test
-    public void init() throws Exception {
+    public void init() {
         super.init();
     }
 
@@ -59,7 +54,7 @@ public class LinkConsoleTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "init")
     public void addLink() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/link/");
         request.setMethod("POST");
         final JSONObject requestJSON = new JSONObject();
@@ -68,15 +63,15 @@ public class LinkConsoleTestCase extends AbstractTestCase {
         link.put(Link.LINK_TITLE, "黑客派");
         link.put(Link.LINK_ADDRESS, "https://hacpai.com");
         link.put(Link.LINK_DESCRIPTION, "黑客与画家的社区");
-        final BufferedReader reader = new BufferedReader(new StringReader(requestJSON.toString()));
-        request.setReader(reader);
+        link.put(Link.LINK_ICON, "https://static.hacpai.com/images/favicon.png");
+        request.setJSON(requestJSON);
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -90,7 +85,7 @@ public class LinkConsoleTestCase extends AbstractTestCase {
         final JSONObject l = getLinkRepository().getList(new Query()).get(0);
         final String linkId = l.optString(Keys.OBJECT_ID);
 
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/link/");
         request.setMethod("PUT");
         final JSONObject requestJSON = new JSONObject();
@@ -100,15 +95,15 @@ public class LinkConsoleTestCase extends AbstractTestCase {
         link.put(Link.LINK_TITLE, "黑客派");
         link.put(Link.LINK_ADDRESS, "https://hacpai.com");
         link.put(Link.LINK_DESCRIPTION, "B3log 开源社区线上论坛");
-        final BufferedReader reader = new BufferedReader(new StringReader(requestJSON.toString()));
-        request.setReader(reader);
+        link.put(Link.LINK_ICON, "https://static.hacpai.com/images/favicon.png");
+        request.setJSON(requestJSON);
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -122,21 +117,20 @@ public class LinkConsoleTestCase extends AbstractTestCase {
         final JSONObject l = getLinkRepository().getList(new Query()).get(0);
         final String linkId = l.optString(Keys.OBJECT_ID);
 
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/link/order/");
         request.setMethod("PUT");
         final JSONObject requestJSON = new JSONObject();
         requestJSON.put(Keys.OBJECT_ID, linkId);
         requestJSON.put(Common.DIRECTION, "up");
-        final BufferedReader reader = new BufferedReader(new StringReader(requestJSON.toString()));
-        request.setReader(reader);
+        request.setJSON(requestJSON);
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -150,15 +144,15 @@ public class LinkConsoleTestCase extends AbstractTestCase {
         final JSONObject l = getLinkRepository().getList(new Query()).get(0);
         final String linkId = l.optString(Keys.OBJECT_ID);
 
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/link/" + linkId);
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -169,15 +163,15 @@ public class LinkConsoleTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "getLink")
     public void getLinks() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/links/1/10/20");
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -191,16 +185,16 @@ public class LinkConsoleTestCase extends AbstractTestCase {
         final JSONObject l = getLinkRepository().getList(new Query()).get(0);
         final String linkId = l.optString(Keys.OBJECT_ID);
 
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/link/" + linkId);
         request.setMethod("DELETE");
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 }

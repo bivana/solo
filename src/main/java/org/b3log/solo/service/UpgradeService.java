@@ -21,7 +21,7 @@ import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.service.annotation.Service;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.Server;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.upgrade.*;
 import org.json.JSONObject;
@@ -30,7 +30,7 @@ import org.json.JSONObject;
  * Upgrade service.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.2.1.6, Apr 19, 2019
+ * @version 1.2.1.14, Jan 3, 2020
  * @since 1.2.0
  */
 @Service
@@ -57,11 +57,13 @@ public class UpgradeService {
                 return;
             }
 
-            final String currentVer = preference.getString(Option.ID_C_VERSION);
-            if (SoloServletListener.VERSION.equals(currentVer)) {
+            final String currentVer = preference.getString(Option.ID_C_VERSION); // 数据库中的版本
+            if (Server.VERSION.equals(currentVer)) {
+                // 如果数据库中的版本和运行时版本一致则说明已经是最新版
                 return;
             }
 
+            // 如果版本较老，则调用对应的升级程序进行升级，并贯穿升级下去直到最新版
             switch (currentVer) {
                 case "2.9.9":
                     V299_300.perform();
@@ -77,6 +79,22 @@ public class UpgradeService {
                     V340_350.perform();
                 case "3.5.0":
                     V350_360.perform();
+                case "3.6.0":
+                    V360_361.perform();
+                case "3.6.1":
+                    V361_362.perform();
+                case "3.6.2":
+                    V362_363.perform();
+                case "3.6.3":
+                    V363_364.perform();
+                case "3.6.4":
+                    V364_365.perform();
+                case "3.6.5":
+                    V365_366.perform();
+                case "3.6.6":
+                    V366_367.perform();
+                case "3.6.7":
+                    V367_368.perform();
 
                     break;
                 default:
@@ -84,8 +102,7 @@ public class UpgradeService {
                     System.exit(-1);
             }
         } catch (final Exception e) {
-            LOGGER.log(Level.ERROR, "Upgrade failed, please contact the Solo developers or reports this "
-                    + "issue: https://github.com/b3log/solo/issues/new", e);
+            LOGGER.log(Level.ERROR, "Upgrade failed, please contact the Solo developers or reports this issue: https://github.com/88250/solo/issues/new", e);
             System.exit(-1);
         }
     }

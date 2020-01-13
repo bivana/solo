@@ -19,8 +19,8 @@ package org.b3log.solo.processor.console;
 
 import org.apache.commons.lang.StringUtils;
 import org.b3log.solo.AbstractTestCase;
-import org.b3log.solo.MockHttpServletRequest;
-import org.b3log.solo.MockHttpServletResponse;
+import org.b3log.solo.MockRequest;
+import org.b3log.solo.MockResponse;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -36,119 +36,105 @@ public class AdminConsoleTestCase extends AbstractTestCase {
 
     /**
      * Init.
-     *
-     * @throws Exception exception
      */
     @Test
-    public void init() throws Exception {
+    public void init() {
         super.init();
     }
 
     /**
      * showAdminIndex.
-     *
-     * @throws Exception exception
      */
     @Test(dependsOnMethods = "init")
-    public void showAdminIndex() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+    public void showAdminIndex() {
+        final MockRequest request = mockRequest();
         request.setRequestURI("/admin-index.do");
         mockAdminLogin(request);
-        final MockHttpServletResponse response = mockResponse();
+        final MockResponse response = mockResponse();
 
-        mockDispatcherServletService(request, response);
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "后台管理 - Solo 的个人博客"));
     }
 
     /**
      * showAdminFunctions.
-     *
-     * @throws Exception exception
      */
     @Test(dependsOnMethods = "init")
-    public void showAdminFunctions() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+    public void showAdminFunctions() {
+        final MockRequest request = mockRequest();
         request.setRequestURI("/admin-article.do");
         mockAdminLogin(request);
-        final MockHttpServletResponse response = mockResponse();
+        final MockResponse response = mockResponse();
 
-        mockDispatcherServletService(request, response);
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "<div class=\"form\">"));
     }
 
     /**
      * showAdminPreferenceFunction.
-     *
-     * @throws Exception exception
      */
     @Test(dependsOnMethods = "init")
-    public void showAdminPreferenceFunction() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+    public void showAdminPreferenceFunction() {
+        final MockRequest request = mockRequest();
         request.setRequestURI("/admin-preference.do");
         mockAdminLogin(request);
-        final MockHttpServletResponse response = mockResponse();
+        final MockResponse response = mockResponse();
 
-        mockDispatcherServletService(request, response);
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "信息配置"));
     }
 
     /**
      * exportSQL.
-     *
-     * @throws Exception exception
      */
     @Test(dependsOnMethods = "init")
-    public void exportSQL() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+    public void exportSQL() {
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/export/sql");
         mockAdminLogin(request);
-        final MockHttpServletResponse response = mockResponse();
+        final MockResponse response = mockResponse();
 
-        mockDispatcherServletService(request, response);
+        mockDispatcher(request, response);
 
-        final long outputBytes = response.outputBytes();
+        final long outputBytes = response.getBytes().length;
         Assert.assertTrue(0 < outputBytes);
     }
 
     /**
      * exportJSON.
-     *
-     * @throws Exception exception
      */
     @Test(dependsOnMethods = "init")
-    public void exportJSON() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+    public void exportJSON() {
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/export/json");
         mockAdminLogin(request);
-        final MockHttpServletResponse response = mockResponse();
+        final MockResponse response = mockResponse();
 
-        mockDispatcherServletService(request, response);
+        mockDispatcher(request, response);
 
-        final long outputBytes = response.outputBytes();
+        final long outputBytes = response.getBytes().length;
         Assert.assertTrue(0 < outputBytes);
     }
 
     /**
      * exportHexo.
-     *
-     * @throws Exception exception
      */
     @Test(dependsOnMethods = "init")
-    public void exportHexo() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+    public void exportHexo() {
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/export/hexo");
         mockAdminLogin(request);
-        final MockHttpServletResponse response = mockResponse();
+        final MockResponse response = mockResponse();
 
-        mockDispatcherServletService(request, response);
+        mockDispatcher(request, response);
 
-        final long outputBytes = response.outputBytes();
+        final long outputBytes = response.getBytes().length;
         Assert.assertTrue(0 < outputBytes);
     }
 }

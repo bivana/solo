@@ -52,7 +52,7 @@ import static org.b3log.solo.model.Article.*;
  * Article management service.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.3.1.2, Apr 19, 2019
+ * @version 1.3.4.1, Jan 8, 2020
  * @since 0.3.5
  */
 @Service
@@ -118,6 +118,12 @@ public class ArticleMgmtService {
     private CommentRepository commentRepository;
 
     /**
+     * Category-tag repository.
+     */
+    @Inject
+    private CategoryTagRepository categoryTagRepository;
+
+    /**
      * Permalink query service.
      */
     @Inject
@@ -176,6 +182,15 @@ public class ArticleMgmtService {
      */
     public void refreshGitHub() {
         if (!initService.isInited()) {
+            return;
+        }
+
+        final JSONObject preference = optionQueryService.getPreference();
+        if (null == preference) {
+            return;
+        }
+
+        if (!preference.optBoolean(Option.ID_C_PULL_GITHUB)) {
             return;
         }
 
@@ -278,10 +293,11 @@ public class ArticleMgmtService {
                 page.put(Page.PAGE_TITLE, "我的开源");
                 page.put(Page.PAGE_OPEN_TARGET, "_self");
                 page.put(Page.PAGE_PERMALINK, permalink);
-                page.put(Page.PAGE_ICON, "images/github-icon.png");
+                page.put(Page.PAGE_ICON, "/images/github-icon.png");
                 pageRepository.add(page);
             } else {
                 page.put(Page.PAGE_OPEN_TARGET, "_self");
+                page.put(Page.PAGE_ICON, "/images/github-icon.png");
                 pageRepository.update(page.optString(Keys.OBJECT_ID), page);
             }
             transaction.commit();
@@ -307,7 +323,7 @@ public class ArticleMgmtService {
             final JSONObject data = new JSONObject().put(ARTICLE, article);
             B3ArticleSender.pushArticleToRhy(data);
         } catch (final Exception e) {
-            LOGGER.log(Level.ERROR, "Pushes an article [id=" + articleId + "] to community failed", e);
+            LOGGER.log(Level.ERROR, "Pushes an article [id=" + articleId + "] to HacPai failed", e);
         }
     }
 
@@ -323,7 +339,7 @@ public class ArticleMgmtService {
         final JSONObject newArticle = new JSONObject(article, JSONObject.getNames(article));
         final int commentCnt = article.getInt(Article.ARTICLE_COMMENT_COUNT);
         newArticle.put(Article.ARTICLE_COMMENT_COUNT, commentCnt + 1);
-        articleRepository.update(articleId, newArticle);
+        articleRepository.update(articleId, newArticle, ARTICLE_COMMENT_COUNT);
     }
 
     /**
@@ -338,7 +354,7 @@ public class ArticleMgmtService {
         try {
             final JSONObject article = articleRepository.get(articleId);
             article.put(ARTICLE_STATUS, ARTICLE_STATUS_C_DRAFT);
-            articleRepository.update(articleId, article);
+            articleRepository.update(articleId, article, ARTICLE_STATUS);
 
             transaction.commit();
         } catch (final Exception e) {
@@ -366,7 +382,7 @@ public class ArticleMgmtService {
         try {
             final JSONObject topArticle = articleRepository.get(articleId);
             topArticle.put(ARTICLE_PUT_TOP, top);
-            articleRepository.update(articleId, topArticle);
+            articleRepository.update(articleId, topArticle, ARTICLE_PUT_TOP);
 
             transaction.commit();
         } catch (final Exception e) {
@@ -405,7 +421,7 @@ public class ArticleMgmtService {
         try {
             final JSONObject article = requestJSONObject.getJSONObject(ARTICLE);
             String tagsString = article.optString(Article.ARTICLE_TAGS_REF);
-            tagsString = Tag.formatTags(tagsString);
+            tagsString = Tag.formatTags(tagsString, 4);
             if (StringUtils.isBlank(tagsString)) {
                 tagsString = "待分类";
             }
@@ -418,6 +434,8 @@ public class ArticleMgmtService {
             article.put(ARTICLE_PERMALINK, permalink);
 
             processTagsForArticleUpdate(oldArticle, article);
+
+            archiveDate(article);
 
             if (!oldArticle.getString(Article.ARTICLE_PERMALINK).equals(permalink)) { // The permalink has been updated
                 // Updates related comments' links
@@ -513,7 +531,7 @@ public class ArticleMgmtService {
             }
 
             String tagsString = article.optString(Article.ARTICLE_TAGS_REF);
-            tagsString = Tag.formatTags(tagsString);
+            tagsString = Tag.formatTags(tagsString, 4);
             if (StringUtils.isBlank(tagsString)) {
                 tagsString = "待分类";
             }
@@ -609,7 +627,7 @@ public class ArticleMgmtService {
             for (final JSONObject article : randomArticles) {
                 article.put(Article.ARTICLE_RANDOM_DOUBLE, Math.random());
 
-                articleRepository.update(article.getString(Keys.OBJECT_ID), article);
+                articleRepository.update(article.getString(Keys.OBJECT_ID), article, ARTICLE_RANDOM_DOUBLE);
             }
 
             transaction.commit();
@@ -631,36 +649,37 @@ public class ArticleMgmtService {
      * @throws ServiceException service exception
      */
     public void incViewCount(final String articleId) throws ServiceException {
-        JSONObject article;
+        // v3.7.0 后开始使用社区浏览计数服务 https://github.com/Vanessa219/uvstat
 
-        try {
-            article = articleRepository.get(articleId);
-
-            if (null == article) {
-                return;
-            }
-        } catch (final RepositoryException e) {
-            LOGGER.log(Level.ERROR, "Gets article [id=" + articleId + "] failed", e);
-
-            return;
-        }
-
-        final Transaction transaction = articleRepository.beginTransaction();
-
-        try {
-            article.put(Article.ARTICLE_VIEW_COUNT, article.getInt(Article.ARTICLE_VIEW_COUNT) + 1);
-            articleRepository.update(articleId, article);
-
-            transaction.commit();
-        } catch (final Exception e) {
-            if (transaction.isActive()) {
-                transaction.rollback();
-            }
-
-            LOGGER.log(Level.WARN, "Updates article view count failed");
-
-            throw new ServiceException(e);
-        }
+//        JSONObject article;
+//
+//        try {
+//            article = articleRepository.get(articleId);
+//
+//            if (null == article) {
+//                return;
+//            }
+//        } catch (final RepositoryException e) {
+//            LOGGER.log(Level.ERROR, "Gets article [id=" + articleId + "] failed", e);
+//
+//            return;
+//        }
+//
+//        final Transaction transaction = articleRepository.beginTransaction();
+//        try {
+//            article.put(Article.ARTICLE_VIEW_COUNT, article.getInt(Article.ARTICLE_VIEW_COUNT) + 1);
+//            articleRepository.update(articleId, article, ARTICLE_VIEW_COUNT);
+//
+//            transaction.commit();
+//        } catch (final Exception e) {
+//            if (transaction.isActive()) {
+//                transaction.rollback();
+//            }
+//
+//            LOGGER.log(Level.WARN, "Updates article view count failed");
+//
+//            throw new ServiceException(e);
+//        }
     }
 
     /**
@@ -672,9 +691,14 @@ public class ArticleMgmtService {
     private void unArchiveDate(final String articleId) throws ServiceException {
         try {
             final JSONObject archiveDateArticleRelation = archiveDateArticleRepository.getByArticleId(articleId);
+            if (null == archiveDateArticleRelation) {
+                // 草稿不生成存档，所以需要判空
+                return;
+            }
+
             final String archiveDateId = archiveDateArticleRelation.getString(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID);
-            final int articleCount = archiveDateArticleRepository.getArticleCount(archiveDateId);
-            if (1 > articleCount) {
+            final int publishedArticleCount = archiveDateArticleRepository.getPublishedArticleCount(archiveDateId);
+            if (1 > publishedArticleCount) {
                 archiveDateRepository.remove(archiveDateId);
             }
 
@@ -800,19 +824,16 @@ public class ArticleMgmtService {
      * @throws JSONException       json exception
      * @throws RepositoryException repository exception
      */
-    private void removeTagArticleRelations(final String articleId, final String... tagIds)
-            throws JSONException, RepositoryException {
+    private void removeTagArticleRelations(final String articleId, final String... tagIds) throws JSONException, RepositoryException {
         final List<String> tagIdList = Arrays.asList(tagIds);
         final List<JSONObject> tagArticleRelations = tagArticleRepository.getByArticleId(articleId);
 
         for (int i = 0; i < tagArticleRelations.size(); i++) {
             final JSONObject tagArticleRelation = tagArticleRelations.get(i);
             String relationId;
-
             if (tagIdList.isEmpty()) { // Removes all if un-specified
                 relationId = tagArticleRelation.getString(Keys.OBJECT_ID);
                 tagArticleRepository.remove(relationId);
-
             } else {
                 if (tagIdList.contains(tagArticleRelation.getString(Tag.TAG + "_" + Keys.OBJECT_ID))) {
                     relationId = tagArticleRelation.getString(Keys.OBJECT_ID);
@@ -823,6 +844,7 @@ public class ArticleMgmtService {
             final String tagId = tagArticleRelation.optString(Tag.TAG + "_" + Keys.OBJECT_ID);
             final int articleCount = tagArticleRepository.getArticleCount(tagId);
             if (1 > articleCount) {
+                categoryTagRepository.removeByTagId(tagId);
                 tagRepository.remove(tagId);
             }
         }
@@ -891,15 +913,18 @@ public class ArticleMgmtService {
      *
      * @param article the specified article, for example,
      *                {
-     *                ....,
      *                "oId": "",
-     *                "articleCreateDate": java.util.Date,
      *                ....
      *                }
      * @throws RepositoryException repository exception
      */
     private void archiveDate(final JSONObject article) throws RepositoryException {
-        final long created = article.optLong(Article.ARTICLE_CREATED);
+        if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(ARTICLE_STATUS)) {
+            // 草稿不生成存档
+            return;
+        }
+
+        final long created = article.optLong(Keys.OBJECT_ID);
         final String createDateString = DateFormatUtils.format(created, "yyyy/MM");
         JSONObject archiveDate = archiveDateRepository.getByArchiveDate(createDateString);
         if (null == archiveDate) {
@@ -913,10 +938,13 @@ public class ArticleMgmtService {
             }
         }
 
-        final JSONObject archiveDateArticleRelation = new JSONObject();
-        archiveDateArticleRelation.put(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID, archiveDate.optString(Keys.OBJECT_ID));
-        archiveDateArticleRelation.put(Article.ARTICLE + "_" + Keys.OBJECT_ID, article.optString(Keys.OBJECT_ID));
-        archiveDateArticleRepository.add(archiveDateArticleRelation);
+        final String articleId = article.optString(Keys.OBJECT_ID);
+        if (null == archiveDateArticleRepository.getByArticleId(articleId)) {
+            final JSONObject archiveDateArticleRelation = new JSONObject();
+            archiveDateArticleRelation.put(ArchiveDate.ARCHIVE_DATE + "_" + Keys.OBJECT_ID, archiveDate.optString(Keys.OBJECT_ID));
+            archiveDateArticleRelation.put(Article.ARTICLE + "_" + Keys.OBJECT_ID, articleId);
+            archiveDateArticleRepository.add(archiveDateArticleRelation);
+        }
     }
 
     /**

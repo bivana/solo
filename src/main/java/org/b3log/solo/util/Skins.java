@@ -23,32 +23,32 @@ import freemarker.template.TemplateExceptionHandler;
 import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
+import org.b3log.latke.http.Cookie;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.RequestContext;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.RequestContext;
 import org.b3log.latke.util.Locales;
 import org.b3log.latke.util.Stopwatchs;
-import org.b3log.solo.SoloServletListener;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
 
-import javax.servlet.ServletContext;
-import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpServletRequest;
+import java.io.File;
 import java.io.IOException;
 import java.io.InputStream;
-import java.nio.file.Path;
-import java.nio.file.Paths;
+import java.net.URI;
+import java.nio.file.*;
 import java.util.*;
+import java.util.stream.Stream;
 
 /**
  * Skin utilities.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.1.6.6, Mar 29, 2019
+ * @version 1.1.6.9, Nov 22, 2019
  * @since 0.3.1
  */
 public final class Skins {
@@ -64,10 +64,21 @@ public final class Skins {
     public static final Configuration TEMPLATE_CFG;
 
     static {
-        TEMPLATE_CFG = new Configuration(Configuration.VERSION_2_3_28);
+        TEMPLATE_CFG = new Configuration(Configuration.VERSION_2_3_29);
         TEMPLATE_CFG.setDefaultEncoding("UTF-8");
-        final ServletContext servletContext = SoloServletListener.getServletContext();
-        TEMPLATE_CFG.setServletContextForTemplateLoading(servletContext, "");
+        try {
+            String path = Skins.class.getResource("/").getPath();
+            if (StringUtils.contains(path, "/target/classes/") || StringUtils.contains(path, "/target/test-classes/")) {
+                // 开发时使用源码目录
+                path = StringUtils.replace(path, "/target/classes/", "/src/main/resources/");
+                path = StringUtils.replace(path, "/target/test-classes/", "/src/main/resources/");
+            }
+            TEMPLATE_CFG.setDirectoryForTemplateLoading(new File(path));
+            LOGGER.log(Level.INFO, "Loaded template from directory [" + path + "]");
+        } catch (final Exception e) {
+            TEMPLATE_CFG.setClassForTemplateLoading(Skins.class, "/");
+            LOGGER.log(Level.INFO, "Loaded template from classpath");
+        }
         TEMPLATE_CFG.setTemplateExceptionHandler(TemplateExceptionHandler.RETHROW_HANDLER);
         TEMPLATE_CFG.setLogTemplateExceptions(false);
     }
@@ -120,8 +131,8 @@ public final class Skins {
     }
 
     /**
-     * Fills the specified data model with the current skin's (WebRoot/skins/${skinDirName}/lang/lang_xx_XX.properties)
-     * and core language (WebRoot/WEB-INF/classes/lang_xx_XX.properties) configurations.
+     * Fills the specified data model with the current skin's (skins/${skinDirName}/lang/lang_xx_XX.properties)
+     * and core language (classes/lang_xx_XX.properties) configurations.
      *
      * @param localeString       the specified locale string
      * @param currentSkinDirName the specified current skin directory name
@@ -149,9 +160,7 @@ public final class Skins {
                 langs = new HashMap<>();
                 final String language = Locales.getLanguage(localeString);
                 final String country = Locales.getCountry(localeString);
-                final ServletContext servletContext = SoloServletListener.getServletContext();
-                final InputStream inputStream = servletContext.getResourceAsStream(
-                        "/skins/" + currentSkinDirName + "/lang/lang_" + language + '_' + country + ".properties");
+                final InputStream inputStream = Skins.class.getResourceAsStream("/skins/" + currentSkinDirName + "/lang/lang_" + language + '_' + country + ".properties");
                 if (null != inputStream) {
                     LOGGER.log(Level.DEBUG, "Loading skin [dirName={0}, locale={1}]", currentSkinDirName, localeString);
                     final Properties props = new Properties();
@@ -194,17 +203,32 @@ public final class Skins {
     public static Set<String> getSkinDirNames() {
         final Set<String> ret = new HashSet<>();
 
-        final ServletContext servletContext = SoloServletListener.getServletContext();
-        final Set<String> resourcePaths = servletContext.getResourcePaths("/skins");
-        for (final String path : resourcePaths) {
-            final Path p = Paths.get(path);
-            final Path file = p.getFileName();
-            final String fileName = file.toString();
-            if (fileName.startsWith(".") || fileName.endsWith(".md")) {
-                continue;
+        try {
+            final URI uri = Skins.class.getResource("/skins").toURI();
+            Path resourcePath;
+            if (uri.getScheme().equals("jar")) {
+                FileSystem fileSystem;
+                try {
+                    fileSystem = FileSystems.getFileSystem(uri);
+                } catch (final FileSystemNotFoundException e) {
+                    fileSystem = FileSystems.newFileSystem(uri, Collections.emptyMap());
+                }
+                resourcePath = fileSystem.getPath("/skins");
+            } else {
+                resourcePath = Paths.get(uri);
             }
+            final Stream<Path> walk = Files.walk(resourcePath, 1);
+            for (final Iterator<Path> it = walk.iterator(); it.hasNext(); ) {
+                final Path file = it.next().getFileName();
+                final String fileName = file.toString();
+                if (fileName.startsWith(".") || fileName.endsWith(".md") || "skins".equals(fileName)) {
+                    continue;
+                }
 
-            ret.add(fileName);
+                ret.add(fileName);
+            }
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "Get skin dir names failed", e);
         }
 
         return ret;
@@ -239,12 +263,12 @@ public final class Skins {
      * @param request the specified request
      * @return directory name, or {@code null} if not found
      */
-    public static String getSkinDirNameFromCookie(final HttpServletRequest request) {
+    public static String getSkinDirNameFromCookie(final Request request) {
         final Set<String> skinDirNames = Skins.getSkinDirNames();
         boolean isMobile = Solos.isMobile(request);
         String skin = null, mobileSkin = null;
-        final Cookie[] cookies = request.getCookies();
-        if (null != cookies) {
+        final Set<Cookie> cookies = request.getCookies();
+        if (!cookies.isEmpty()) {
             for (final Cookie cookie : cookies) {
                 if (Common.COOKIE_NAME_SKIN.equals(cookie.getName()) && !isMobile) {
                     final String s = cookie.getValue();

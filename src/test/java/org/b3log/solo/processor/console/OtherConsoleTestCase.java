@@ -19,8 +19,8 @@ package org.b3log.solo.processor.console;
 
 import org.apache.commons.lang.StringUtils;
 import org.b3log.solo.AbstractTestCase;
-import org.b3log.solo.MockHttpServletRequest;
-import org.b3log.solo.MockHttpServletResponse;
+import org.b3log.solo.MockRequest;
+import org.b3log.solo.MockResponse;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -36,11 +36,9 @@ public class OtherConsoleTestCase extends AbstractTestCase {
 
     /**
      * Init.
-     *
-     * @throws Exception exception
      */
     @Test
-    public void init() throws Exception {
+    public void init() {
         super.init();
     }
 
@@ -51,16 +49,16 @@ public class OtherConsoleTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "init")
     public void removeUnusedArchives() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/archive/unused");
         request.setMethod("DELETE");
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 }

@@ -21,15 +21,16 @@ import org.apache.commons.lang.StringEscapeUtils;
 import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.http.annotation.Before;
+import org.b3log.latke.http.renderer.JsonRenderer;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
 import org.b3log.latke.util.Strings;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Common;
@@ -41,7 +42,6 @@ import org.b3log.solo.util.Solos;
 import org.json.JSONArray;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletRequest;
 import java.util.List;
 import java.util.stream.Collectors;
 
@@ -49,7 +49,7 @@ import java.util.stream.Collectors;
  * Article console request processing.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.2.0.1, Mar 29, 2019
+ * @version 1.2.0.4, Jan 11, 2020
  * @since 0.4.0
  */
 @Singleton
@@ -105,10 +105,10 @@ public class ArticleConsole {
      * {
      *     "sc": true,
      *     "data": [
-     *         "https://img.hacpai.com/bing/20171226.jpg?imageView2/1/w/960/h/540/interlace/1/q/100",
-     *         "https://img.hacpai.com/bing/20171105.jpg?imageView2/1/w/960/h/540/interlace/1/q/100",
-     *         "https://img.hacpai.com/bing/20180105.jpg?imageView2/1/w/960/h/540/interlace/1/q/100",
-     *         "https://img.hacpai.com/bing/20171114.jpg?imageView2/1/w/960/h/540/interlace/1/q/100"
+     *         "https://b3logfile.com/bing/20171226.jpg?imageView2/1/w/960/h/540/interlace/1/q/100",
+     *         "https://b3logfile.com/bing/20171105.jpg?imageView2/1/w/960/h/540/interlace/1/q/100",
+     *         "https://b3logfile.com/bing/20180105.jpg?imageView2/1/w/960/h/540/interlace/1/q/100",
+     *         "https://b3logfile.com/bing/20171114.jpg?imageView2/1/w/960/h/540/interlace/1/q/100"
      *     ]
      * }
      * </pre>
@@ -122,7 +122,7 @@ public class ArticleConsole {
         final JSONObject result = new JSONObject();
         renderer.setJSONObject(result);
         result.put(Keys.STATUS_CODE, true);
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         String strN = context.param("n");
         if (!Strings.isNumeric(strN)) {
             strN = "6";
@@ -181,6 +181,16 @@ public class ArticleConsole {
         context.setRenderer(renderer);
         try {
             final String articleId = context.pathVar("id");
+            final JSONObject currentUser = Solos.getCurrentUser(context.getRequest(), context.getResponse());
+            if (!articleQueryService.canAccessArticle(articleId, currentUser)) {
+                final JSONObject ret = new JSONObject();
+                renderer.setJSONObject(ret);
+                ret.put(Keys.STATUS_CODE, false);
+                ret.put(Keys.MSG, langPropsService.get("forbiddenLabel"));
+
+                return;
+            }
+
             final JSONObject result = articleQueryService.getArticle(articleId);
             result.put(Keys.STATUS_CODE, true);
             renderer.setJSONObject(result);
@@ -498,12 +508,10 @@ public class ArticleConsole {
 
             ret.put(Keys.MSG, langPropsService.get("updateSuccLabel"));
             ret.put(Keys.STATUS_CODE, true);
-        } catch (final Exception e) {
-            LOGGER.log(Level.ERROR, e.getMessage(), e);
-
+        } catch (final ServiceException e) {
             final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
-            jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
+            jsonObject.put(Keys.MSG, e.getMessage());
         }
     }
 
@@ -560,11 +568,9 @@ public class ArticleConsole {
 
             renderer.setJSONObject(ret);
         } catch (final ServiceException e) {
-            LOGGER.log(Level.ERROR, e.getMessage());
-
             final JSONObject jsonObject = new JSONObject().put(Keys.STATUS_CODE, false);
             renderer.setJSONObject(jsonObject);
-            jsonObject.put(Keys.MSG, langPropsService.get("updateFailLabel"));
+            jsonObject.put(Keys.MSG, e.getMessage());
         }
     }
 }

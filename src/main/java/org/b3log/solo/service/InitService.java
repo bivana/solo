@@ -35,7 +35,7 @@ import org.b3log.latke.repository.jdbc.util.JdbcRepositories.CreateTableResult;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.annotation.Service;
 import org.b3log.latke.util.Ids;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.Server;
 import org.b3log.solo.model.*;
 import org.b3log.solo.model.Option.DefaultPreference;
 import org.b3log.solo.repository.*;
@@ -52,7 +52,7 @@ import java.util.List;
  * Solo initialization service.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.5.2.33, Apr 2, 2019
+ * @version 1.5.2.36, Dec 28, 2019
  * @since 0.4.0
  */
 @Service
@@ -284,7 +284,7 @@ public class InitService {
         comment.put(Comment.COMMENT_CONTENT, langPropsService.get("helloWorld.comment.content"));
         comment.put(Comment.COMMENT_ORIGINAL_COMMENT_ID, "");
         comment.put(Comment.COMMENT_ORIGINAL_COMMENT_NAME, "");
-        comment.put(Comment.COMMENT_THUMBNAIL_URL, "https://img.hacpai.com/avatar/1353745196354_1535379434567.png?imageView2/1/w/64/h/64/q/100");
+        comment.put(Comment.COMMENT_THUMBNAIL_URL, Images.COMMUNITY_FILE_URL + "/avatar/1353745196354_1535379434567.png?imageView2/1/w/64/h/64/q/100");
         comment.put(Comment.COMMENT_CREATED, now);
         comment.put(Comment.COMMENT_ON_ID, articleId);
         final String commentId = Ids.genTimeMillisId();
@@ -437,6 +437,7 @@ public class InitService {
         link.put(Link.LINK_TITLE, "黑客派");
         link.put(Link.LINK_ADDRESS, "https://hacpai.com");
         link.put(Link.LINK_DESCRIPTION, "黑客与画家的社区");
+        link.put(Link.LINK_ICON, "https://static.hacpai.com/images/favicon.png");
         final int maxOrder = linkRepository.getMaxOrder();
         link.put(Link.LINK_ORDER, maxOrder + 1);
         linkRepository.add(link);
@@ -481,6 +482,12 @@ public class InitService {
         syncGitHubOpt.put(Option.OPTION_CATEGORY, Option.CATEGORY_C_PREFERENCE);
         syncGitHubOpt.put(Option.OPTION_VALUE, DefaultPreference.DEFAULT_SYNC_GITHUB);
         optionRepository.add(syncGitHubOpt);
+
+        final JSONObject pullGitHubOpt = new JSONObject();
+        pullGitHubOpt.put(Keys.OBJECT_ID, Option.ID_C_PULL_GITHUB);
+        pullGitHubOpt.put(Option.OPTION_CATEGORY, Option.CATEGORY_C_PREFERENCE);
+        pullGitHubOpt.put(Option.OPTION_VALUE, DefaultPreference.DEFAULT_PULL_GITHUB);
+        optionRepository.add(pullGitHubOpt);
 
         final JSONObject faviconURLOpt = new JSONObject();
         faviconURLOpt.put(Keys.OBJECT_ID, Option.ID_C_FAVICON_URL);
@@ -629,7 +636,7 @@ public class InitService {
         final JSONObject versionOpt = new JSONObject();
         versionOpt.put(Keys.OBJECT_ID, Option.ID_C_VERSION);
         versionOpt.put(Option.OPTION_CATEGORY, Option.CATEGORY_C_PREFERENCE);
-        versionOpt.put(Option.OPTION_VALUE, SoloServletListener.VERSION);
+        versionOpt.put(Option.OPTION_VALUE, Server.VERSION);
         optionRepository.add(versionOpt);
 
         final JSONObject articleListStyleOpt = new JSONObject();

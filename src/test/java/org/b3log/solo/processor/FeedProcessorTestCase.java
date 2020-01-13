@@ -19,8 +19,8 @@ package org.b3log.solo.processor;
 
 import org.apache.commons.lang.StringUtils;
 import org.b3log.solo.AbstractTestCase;
-import org.b3log.solo.MockHttpServletRequest;
-import org.b3log.solo.MockHttpServletResponse;
+import org.b3log.solo.MockRequest;
+import org.b3log.solo.MockResponse;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
@@ -36,26 +36,23 @@ public class FeedProcessorTestCase extends AbstractTestCase {
 
     /**
      * Init.
-     *
-     * @throws Exception exception
      */
     @Test
-    public void init() throws Exception {
+    public void init() {
         super.init();
     }
 
     /**
      * blogArticlesAtom.
-     *
      */
     @Test(dependsOnMethods = "init")
     public void blogArticlesAtom() {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/atom.xml");
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.startsWith(content, "<?xml version=\"1.0\""));
     }
 
@@ -64,12 +61,12 @@ public class FeedProcessorTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "init")
     public void blogArticlesRSS() {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/rss.xml");
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.startsWith(content, "<?xml version=\"1.0\""));
     }
 }

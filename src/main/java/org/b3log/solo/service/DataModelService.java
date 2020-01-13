@@ -24,6 +24,8 @@ import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.event.Event;
 import org.b3log.latke.event.EventManager;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
@@ -36,12 +38,10 @@ import org.b3log.latke.repository.*;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.latke.service.annotation.Service;
-import org.b3log.latke.servlet.RequestContext;
 import org.b3log.latke.util.*;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.Server;
 import org.b3log.solo.model.*;
 import org.b3log.solo.repository.*;
-import org.b3log.solo.util.Emotions;
 import org.b3log.solo.util.Markdowns;
 import org.b3log.solo.util.Skins;
 import org.b3log.solo.util.Solos;
@@ -59,7 +59,7 @@ import static org.b3log.solo.model.Article.ARTICLE_CONTENT;
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
  * @author <a href="http://vanessa.b3log.org">Liyuan Li</a>
- * @version 1.7.0.10, Apr 22, 2019
+ * @version 1.7.0.13, Jan 9, 2020
  * @since 0.3.1
  */
 @Service
@@ -181,7 +181,7 @@ public class DataModelService {
     /**
      * Fills articles in index.ftl.
      *
-     * @param context        the specified HTTP servlet request context
+     * @param context        the specified HTTP request context
      * @param dataModel      data model
      * @param currentPageNum current page number
      * @param preference     the specified preference
@@ -462,6 +462,12 @@ public class DataModelService {
      * @throws ServiceException service exception
      */
     public void fillMostCommentArticles(final Map<String, Object> dataModel, final JSONObject preference) throws ServiceException {
+        if (!preference.optBoolean(Option.ID_C_COMMENTABLE)) {
+            dataModel.put(Common.MOST_COMMENT_ARTICLES, Collections.emptyList());
+
+            return;
+        }
+
         Stopwatchs.start("Fill Most CMMTs Articles");
 
         try {
@@ -509,6 +515,12 @@ public class DataModelService {
      * @throws ServiceException service exception
      */
     public void fillRecentComments(final Map<String, Object> dataModel, final JSONObject preference) throws ServiceException {
+        if (!preference.optBoolean(Option.ID_C_COMMENTABLE)) {
+            dataModel.put(Common.RECENT_COMMENTS, Collections.emptyList());
+
+            return;
+        }
+
         Stopwatchs.start("Fill Recent Comments");
         try {
             LOGGER.debug("Filling recent comments....");
@@ -516,7 +528,6 @@ public class DataModelService {
             final List<JSONObject> recentComments = commentRepository.getRecentComments(recentCommentDisplayCnt);
             for (final JSONObject comment : recentComments) {
                 String commentContent = comment.optString(Comment.COMMENT_CONTENT);
-                commentContent = Emotions.convert(commentContent);
                 commentContent = Markdowns.toHTML(commentContent);
                 commentContent = Jsoup.clean(commentContent, Whitelist.relaxed());
                 comment.put(Comment.COMMENT_CONTENT, commentContent);
@@ -572,7 +583,7 @@ public class DataModelService {
     /**
      * Fills common parts (header, side and footer).
      *
-     * @param context    the specified HTTP servlet request context
+     * @param context    the specified HTTP request context
      * @param dataModel  the specified data model
      * @param preference the specified preference
      * @throws ServiceException service exception
@@ -598,20 +609,27 @@ public class DataModelService {
         }
         dataModel.put("customVars", customVars);
 
-        // 使用 Marked 时代码高亮问题 https://github.com/b3log/solo/issues/12614
-        dataModel.put(Common.MARKED_AVAILABLE, Markdowns.MARKDOWN_HTTP_AVAILABLE);
-
+        dataModel.put(Common.LUTE_AVAILABLE, Markdowns.LUTE_AVAILABLE);
         String hljsTheme = preference.optString(Option.ID_C_HLJS_THEME);
         if (StringUtils.isBlank(hljsTheme)) {
             hljsTheme = Option.DefaultPreference.DEFAULT_HLJS_THEME;
         }
         dataModel.put(Option.ID_C_HLJS_THEME, hljsTheme);
+
+        dataModel.put(Common.COMMENTABLE, preference.optBoolean(Option.ID_C_COMMENTABLE));
+
+        dataModel.put("staticSite", Solos.GEN_STATIC_SITE);
+        if (!Solos.GEN_STATIC_SITE) {
+            dataModel.put("pagingSep", "?p=");
+        } else {
+            dataModel.put("pagingSep", "/p/");
+        }
     }
 
     /**
      * Fills footer.ftl.
      *
-     * @param context    the specified HTTP servlet request context
+     * @param context    the specified HTTP request context
      * @param dataModel  data model
      * @param preference the specified preference
      * @throws ServiceException service exception
@@ -624,7 +642,7 @@ public class DataModelService {
             final String blogTitle = preference.getString(Option.ID_C_BLOG_TITLE);
             dataModel.put(Option.ID_C_BLOG_TITLE, blogTitle);
             dataModel.put("blogHost", Latkes.getServePath());
-            dataModel.put(Common.VERSION, SoloServletListener.VERSION);
+            dataModel.put(Common.VERSION, Server.VERSION);
             dataModel.put(Common.STATIC_RESOURCE_VERSION, Latkes.getStaticResourceVersion());
             dataModel.put(Common.YEAR, String.valueOf(Calendar.getInstance().get(Calendar.YEAR)));
             String footerContent = "";
@@ -665,7 +683,7 @@ public class DataModelService {
     /**
      * Fills header.ftl.
      *
-     * @param context    the specified HTTP servlet request context
+     * @param context    the specified HTTP request context
      * @param dataModel  data model
      * @param preference the specified preference
      * @throws ServiceException service exception
@@ -748,7 +766,7 @@ public class DataModelService {
     /**
      * Fills side.ftl.
      *
-     * @param context    the specified HTTP servlet request context
+     * @param context    the specified HTTP request context
      * @param dataModel  data model
      * @param preference the specified preference
      * @throws ServiceException service exception
@@ -800,7 +818,7 @@ public class DataModelService {
     /**
      * Fills the specified template.
      *
-     * @param context    the specified HTTP servlet request context
+     * @param context    the specified HTTP request context
      * @param template   the specified template
      * @param dataModel  data model
      * @param preference the specified preference
@@ -903,7 +921,7 @@ public class DataModelService {
      * </pre>
      * </p>
      *
-     * @param context    the specified HTTP servlet request context
+     * @param context    the specified HTTP request context
      * @param article    the specified article
      * @param preference the specified preference
      * @throws ServiceException service exception
@@ -1011,7 +1029,7 @@ public class DataModelService {
      * </pre>
      * </p>
      *
-     * @param context    the specified HTTP servlet request context
+     * @param context    the specified HTTP request context
      * @param articles   the specified articles
      * @param preference the specified preference
      * @throws ServiceException service exception
@@ -1035,9 +1053,16 @@ public class DataModelService {
      * @param article    the specified article
      */
     private void processArticleAbstract(final JSONObject preference, final JSONObject article) {
-        final String articleAbstract = article.optString(Article.ARTICLE_ABSTRACT, null);
-        if (null == articleAbstract) {
+        final String articleAbstract = article.optString(Article.ARTICLE_ABSTRACT);
+        if (StringUtils.isBlank(articleAbstract)) {
             article.put(Article.ARTICLE_ABSTRACT, "");
+        }
+        final String articleAbstractText = article.optString(Article.ARTICLE_ABSTRACT_TEXT);
+        if (StringUtils.isBlank(articleAbstractText)) {
+            // 发布文章时会自动提取摘要文本，其中如果文章加密且没有写摘要，则自动提取文本会返回空字符串 Article#getAbstractText()
+            // 所以当且仅当文章加密且没有摘要的情况下 articleAbstractText 会为空
+            final LangPropsService langPropsService = BeanManager.getInstance().getReference(LangPropsService.class);
+            article.put(Article.ARTICLE_ABSTRACT_TEXT, langPropsService.get("articleContentPwd"));
         }
 
         final String articleListStyle = preference.optString(Option.ID_C_ARTICLE_LIST_STYLE);
@@ -1056,6 +1081,10 @@ public class DataModelService {
      * @throws ServiceException service exception
      */
     public String getTopBarHTML(final RequestContext context) throws ServiceException {
+        if (Solos.GEN_STATIC_SITE) {
+            return "";
+        }
+
         Stopwatchs.start("Gens Top Bar HTML");
 
         try {

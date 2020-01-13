@@ -18,15 +18,15 @@
 package org.b3log.solo.processor;
 
 import org.apache.commons.lang.StringUtils;
+import org.b3log.latke.http.Cookie;
 import org.b3log.solo.AbstractTestCase;
-import org.b3log.solo.MockHttpServletRequest;
-import org.b3log.solo.MockHttpServletResponse;
+import org.b3log.solo.MockRequest;
+import org.b3log.solo.MockResponse;
 import org.b3log.solo.util.Solos;
 import org.testng.Assert;
 import org.testng.annotations.Test;
 
-import javax.servlet.http.Cookie;
-import java.util.List;
+import java.util.Set;
 
 /**
  * {@link IndexProcessor} test case.
@@ -43,22 +43,20 @@ public class IndexProcessorTestCase extends AbstractTestCase {
      */
     @Test
     public void showStart() {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/start");
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "<title>欢迎使用! - Solo</title>"));
     }
 
     /**
      * Init.
-     *
-     * @throws Exception exception
      */
     @Test(dependsOnMethods = "showStart")
-    public void init() throws Exception {
+    public void init() {
         super.init();
     }
 
@@ -67,12 +65,12 @@ public class IndexProcessorTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "init")
     public void showIndex() {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/");
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "<title>Solo 的个人博客</title>"));
     }
 
@@ -81,12 +79,12 @@ public class IndexProcessorTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "init")
     public void showKillBrowser() {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/kill-browser");
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "<title>Kill IE! - Solo 的个人博客</title>"));
     }
 
@@ -95,14 +93,15 @@ public class IndexProcessorTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "init")
     public void logout() {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/logout");
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final List<Cookie> cookies = response.cookies();
+        final Set<Cookie> cookies = response.getCookies();
         Assert.assertEquals(cookies.size(), 1);
-        Assert.assertEquals(cookies.get(0).getName(), Solos.COOKIE_NAME);
-        Assert.assertNull(cookies.get(0).getValue());
+        final Cookie first = cookies.iterator().next();
+        Assert.assertEquals(first.getName(), Solos.COOKIE_NAME);
+        Assert.assertEquals(first.getValue(), "");
     }
 }

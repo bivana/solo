@@ -22,8 +22,8 @@ import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.service.ServiceException;
 import org.b3log.solo.AbstractTestCase;
-import org.b3log.solo.MockHttpServletRequest;
-import org.b3log.solo.MockHttpServletResponse;
+import org.b3log.solo.MockRequest;
+import org.b3log.solo.MockResponse;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
@@ -33,9 +33,6 @@ import org.b3log.solo.service.PageMgmtService;
 import org.json.JSONObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import java.io.BufferedReader;
-import java.io.StringReader;
 
 /**
  * {@link CommentProcessorTestCase} test case.
@@ -49,11 +46,9 @@ public class CommentProcessorTestCase extends AbstractTestCase {
 
     /**
      * Init.
-     *
-     * @throws Exception exception
      */
     @Test
-    public void init() throws Exception {
+    public void init() {
         super.init();
     }
 
@@ -64,7 +59,7 @@ public class CommentProcessorTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "init")
     public void addArticleComment() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/article/comments");
         request.setMethod("POST");
         request.setAttribute(Keys.TEMAPLTE_DIR_NAME, Option.DefaultPreference.DEFAULT_SKIN_DIR_NAME);
@@ -75,16 +70,14 @@ public class CommentProcessorTestCase extends AbstractTestCase {
         requestJSON.put("commentEmail", "d@hacpai.com");
         requestJSON.put("commentURL", "https://hacpai.com");
         requestJSON.put("commentContent", "测试评论");
-
-        final BufferedReader reader = new BufferedReader(new StringReader(requestJSON.toString()));
-        request.setReader(reader);
+        request.setJSON(requestJSON);
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "\"sc\":true"));
     }
 

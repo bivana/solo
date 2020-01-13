@@ -19,15 +19,12 @@ package org.b3log.solo.processor.console;
 
 import org.apache.commons.lang.StringUtils;
 import org.b3log.solo.AbstractTestCase;
-import org.b3log.solo.MockHttpServletRequest;
-import org.b3log.solo.MockHttpServletResponse;
+import org.b3log.solo.MockRequest;
+import org.b3log.solo.MockResponse;
 import org.b3log.solo.model.Option;
 import org.json.JSONObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import java.io.BufferedReader;
-import java.io.StringReader;
 
 /**
  * {@link PreferenceConsole} test case.
@@ -41,30 +38,26 @@ public class PreferenceConsoleTestCase extends AbstractTestCase {
 
     /**
      * Init.
-     *
-     * @throws Exception exception
      */
     @Test
-    public void init() throws Exception {
+    public void init() {
         super.init();
     }
 
     /**
      * getSigns.
-     *
-     * @throws Exception exception
      */
     @Test(dependsOnMethods = "init")
-    public void getSigns() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+    public void getSigns() {
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/signs/");
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -75,41 +68,38 @@ public class PreferenceConsoleTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "init")
     public void getPreference() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/preference/");
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
     /**
      * updatePreference.
-     *
-     * @throws Exception exception
      */
     @Test(dependsOnMethods = "init")
-    public void updatePreference() throws Exception {
+    public void updatePreference() {
         final JSONObject p = getOptionQueryService().getPreference();
 
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/preference/");
         request.setMethod("PUT");
         final JSONObject requestJSON = new JSONObject();
         requestJSON.put(Option.CATEGORY_C_PREFERENCE, p);
-        final BufferedReader reader = new BufferedReader(new StringReader(requestJSON.toString()));
-        request.setReader(reader);
+        request.setJSON(requestJSON);
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 }

@@ -20,16 +20,13 @@ package org.b3log.solo.processor;
 import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.solo.AbstractTestCase;
-import org.b3log.solo.MockHttpServletRequest;
-import org.b3log.solo.MockHttpServletResponse;
+import org.b3log.solo.MockRequest;
+import org.b3log.solo.MockResponse;
 import org.b3log.solo.model.Category;
 import org.b3log.solo.model.Option;
 import org.json.JSONObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import java.io.BufferedReader;
-import java.io.StringReader;
 
 /**
  * {@link CategoryProcessor} test case.
@@ -43,22 +40,18 @@ public class CategoryProcessorTestCase extends AbstractTestCase {
 
     /**
      * Init.
-     *
-     * @throws Exception exception
      */
     @Test
-    public void init() throws Exception {
+    public void init() {
         super.init();
     }
 
     /**
      * showCategoryArticles.
-     *
-     * @throws Exception exception
      */
     @Test(dependsOnMethods = "init")
-    public void showCategoryArticles() throws Exception {
-        MockHttpServletRequest request = mockRequest();
+    public void showCategoryArticles() {
+        MockRequest request = mockRequest();
         request.setRequestURI("/console/category/");
         request.setMethod("POST");
         final JSONObject requestJSON = new JSONObject();
@@ -66,22 +59,21 @@ public class CategoryProcessorTestCase extends AbstractTestCase {
         requestJSON.put(Category.CATEGORY_TITLE, "分类1");
         requestJSON.put(Category.CATEGORY_URI, "cate1");
 
-        final BufferedReader reader = new BufferedReader(new StringReader(requestJSON.toString()));
-        request.setReader(reader);
+        request.setJSON(requestJSON);
 
         mockAdminLogin(request);
 
-        MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
         request = mockRequest();
         request.setRequestURI("/category/cate1");
         request.setMethod("GET");
         request.setAttribute(Keys.TEMAPLTE_DIR_NAME, Option.DefaultPreference.DEFAULT_SKIN_DIR_NAME);
         response = mockResponse();
-        mockDispatcherServletService(request, response);
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "<title>分类1 - Solo 的个人博客</title>"));
     }
 }

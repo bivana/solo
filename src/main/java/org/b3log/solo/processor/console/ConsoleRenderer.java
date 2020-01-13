@@ -18,8 +18,8 @@
 package org.b3log.solo.processor.console;
 
 import freemarker.template.Template;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
 import org.b3log.solo.util.Skins;
 
 /**
@@ -32,7 +32,7 @@ import org.b3log.solo.util.Skins;
 public final class ConsoleRenderer extends AbstractFreeMarkerRenderer {
 
     /**
-     * HTTP servlet request context.
+     * HTTP request context.
      */
     private final RequestContext context;
 

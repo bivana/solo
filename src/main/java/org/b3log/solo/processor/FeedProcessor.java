@@ -17,22 +17,23 @@
  */
 package org.b3log.solo.processor;
 
+import com.vdurmont.emoji.EmojiParser;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.http.annotation.RequestProcessing;
+import org.b3log.latke.http.annotation.RequestProcessor;
+import org.b3log.latke.http.renderer.AtomRenderer;
+import org.b3log.latke.http.renderer.RssRenderer;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.model.User;
 import org.b3log.latke.repository.*;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.AtomRenderer;
-import org.b3log.latke.servlet.renderer.RssRenderer;
 import org.b3log.latke.util.Locales;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.Server;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.model.atom.Category;
@@ -43,12 +44,11 @@ import org.b3log.solo.model.rss.Item;
 import org.b3log.solo.repository.ArticleRepository;
 import org.b3log.solo.service.ArticleQueryService;
 import org.b3log.solo.service.OptionQueryService;
-import org.b3log.solo.util.Emotions;
+import org.b3log.solo.util.Markdowns;
 import org.json.JSONArray;
 import org.json.JSONException;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletResponse;
 import java.util.ArrayList;
 import java.util.Date;
 import java.util.List;
@@ -59,7 +59,7 @@ import java.util.List;
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
  * @author <a href="https://github.com/feroozkhanchintu">feroozkhanchintu</a>
  * @author <a href="https://github.com/nanolikeyou">nanolikeyou</a>
- * @version 2.0.0.1, Dec 3, 2018
+ * @version 2.0.0.3, Jul 29, 2019
  * @since 0.3.1
  */
 @RequestProcessor
@@ -129,7 +129,7 @@ public class FeedProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Get blog article feed error", e);
 
-            context.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+            context.sendError(500);
         }
     }
 
@@ -176,7 +176,7 @@ public class FeedProcessor {
         try {
             final JSONObject preference = optionQueryService.getPreference();
             if (null == preference) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -189,27 +189,22 @@ public class FeedProcessor {
             channel.setLastBuildDate(new Date());
             channel.setLink(Latkes.getServePath());
             channel.setAtomLink(Latkes.getServePath() + "/rss.xml");
-            channel.setGenerator("Solo, ver " + SoloServletListener.VERSION);
+            channel.setGenerator("Solo, v" + Server.VERSION + ", https://solo.b3log.org");
             final String localeString = preference.getString(Option.ID_C_LOCALE_STRING);
             final String country = Locales.getCountry(localeString).toLowerCase();
             final String language = Locales.getLanguage(localeString).toLowerCase();
-
             channel.setLanguage(language + '-' + country);
             channel.setDescription(blogSubtitle);
 
             final List<Filter> filters = new ArrayList<>();
-
             filters.add(new PropertyFilter(Article.ARTICLE_STATUS, FilterOperator.EQUAL, Article.ARTICLE_STATUS_C_PUBLISHED));
             filters.add(new PropertyFilter(Article.ARTICLE_VIEW_PWD, FilterOperator.EQUAL, ""));
             final Query query = new Query().setPageCount(1).setPage(1, outputCnt).
                     setFilter(new CompositeFilter(CompositeFilterOperator.AND, filters)).
                     addSort(Article.ARTICLE_UPDATED, SortDirection.DESCENDING);
-
             final JSONObject articleResult = articleRepository.get(query);
             final JSONArray articles = articleResult.getJSONArray(Keys.RESULTS);
-
             final boolean isFullContent = "fullContent".equals(preference.getString(Option.ID_C_FEED_OUTPUT_MODE));
-
             for (int i = 0; i < articles.length(); i++) {
                 final Item item = getItem(articles, isFullContent, i);
                 channel.addItem(item);
@@ -219,21 +214,21 @@ public class FeedProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Get blog article rss error", e);
 
-            context.sendError(HttpServletResponse.SC_SERVICE_UNAVAILABLE);
+            context.sendError(500);
         }
     }
 
-    private Item getItem(final JSONArray articles, final boolean isFullContent, int i)
-            throws JSONException, ServiceException {
+    private Item getItem(final JSONArray articles, final boolean isFullContent, int i) throws JSONException, ServiceException {
         final JSONObject article = articles.getJSONObject(i);
         final Item ret = new Item();
         String title = article.getString(Article.ARTICLE_TITLE);
-        title = Emotions.toAliases(title);
+        title = EmojiParser.parseToAliases(title);
         ret.setTitle(title);
         String description = isFullContent
                 ? article.getString(Article.ARTICLE_CONTENT)
                 : article.optString(Article.ARTICLE_ABSTRACT);
-        description = Emotions.toAliases(description);
+        description = EmojiParser.parseToAliases(description);
+        description = Markdowns.toHTML(description);
         ret.setDescription(description);
         final long pubDate = article.getLong(Article.ARTICLE_UPDATED);
         ret.setPubDate(new Date(pubDate));

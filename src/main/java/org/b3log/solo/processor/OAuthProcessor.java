@@ -17,44 +17,40 @@
  */
 package org.b3log.solo.processor;
 
-import jodd.http.HttpRequest;
-import jodd.http.HttpResponse;
 import org.apache.commons.lang.RandomStringUtils;
 import org.apache.commons.lang.StringUtils;
-import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
+import org.b3log.latke.http.HttpMethod;
+import org.b3log.latke.http.Request;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.http.Response;
+import org.b3log.latke.http.annotation.RequestProcessing;
+import org.b3log.latke.http.annotation.RequestProcessor;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
 import org.b3log.latke.util.Requests;
 import org.b3log.latke.util.URLs;
 import org.b3log.solo.model.UserExt;
 import org.b3log.solo.service.*;
-import org.b3log.solo.util.GitHubs;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import java.util.Map;
+import java.util.Set;
 import java.util.concurrent.ConcurrentHashMap;
 
 /**
  * OAuth processor.
  * <ul>
- * <li>Redirects to auth page (/oauth/github/redirect), GET</li>
- * <li>OAuth callback (/oauth/github), GET</li>
+ * <li>Redirects to HacPai auth page (/login/redirect), GET</li>
+ * <li>OAuth callback (/login/callback), GET</li>
  * </ul>
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.0.0.8, Mar 27, 2019
+ * @version 1.0.1.3, Jan 13, 2020
  * @since 2.9.5
  */
 @RequestProcessor
@@ -68,7 +64,7 @@ public class OAuthProcessor {
     /**
      * OAuth parameters - state.
      */
-    private static final Map<String, String> STATES = new ConcurrentHashMap<>();
+    private static final Set<String> STATES = ConcurrentHashMap.newKeySet();
 
     /**
      * Option query service.
@@ -107,43 +103,22 @@ public class OAuthProcessor {
     private LangPropsService langPropsService;
 
     /**
-     * Redirects to auth page.
+     * Redirects to HacPai auth page.
      *
      * @param context the specified context
      */
-    @RequestProcessing(value = "/oauth/github/redirect", method = HttpMethod.GET)
+    @RequestProcessing(value = "/login/redirect", method = HttpMethod.GET)
     public void redirectAuth(final RequestContext context) {
-        final HttpResponse res = HttpRequest.get("https://hacpai.com/oauth/solo/client2").trustAllCerts(true).
-                connectionTimeout(3000).timeout(7000).header("User-Agent", Solos.USER_AGENT).send();
-        if (HttpServletResponse.SC_OK != res.statusCode()) {
-            LOGGER.log(Level.ERROR, "Gets oauth client id failed: " + res.toString());
-
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
-
-            return;
-        }
-        res.charset("UTF-8");
-        final JSONObject result = new JSONObject(res.bodyText());
-        if (0 != result.optInt(Keys.CODE)) {
-            LOGGER.log(Level.ERROR, "Gets oauth client id failed: " + result.optString(Keys.MSG));
-
-            return;
-        }
-        final JSONObject data = result.optJSONObject(Keys.DATA);
-        final String clientId = data.optString("clientId");
-        final String loginAuthURL = data.optString("loginAuthURL");
-
         String referer = context.param("referer");
         if (StringUtils.isBlank(referer)) {
             referer = Latkes.getServePath();
         }
-        final String cb = Latkes.getServePath() + "/oauth/github";
-        final String state = referer + ":::" + RandomStringUtils.randomAlphanumeric(16) + ":::cb=" + cb + ":::";
-        STATES.put(state, URLs.encode(state));
 
-        final String path = loginAuthURL + "?client_id=" + clientId + "&state=" + state
-                + "&scope=public_repo,read:user,user:follow";
+        String state = RandomStringUtils.randomAlphanumeric(16) + referer;
+        STATES.add(state);
 
+        final String loginAuthURL = "https://hacpai.com/login?goto=" + Latkes.getServePath() + "/login/callback";
+        final String path = loginAuthURL + "?state=" + URLs.encode(state);
         context.sendRedirect(path);
     }
 
@@ -152,31 +127,23 @@ public class OAuthProcessor {
      *
      * @param context the specified context
      */
-    @RequestProcessing(value = "/oauth/github", method = HttpMethod.GET)
+    @RequestProcessing(value = "/login/callback", method = HttpMethod.GET)
     public synchronized void authCallback(final RequestContext context) {
-        final String state = context.param("state");
-        String referer = STATES.get(state);
-        if (StringUtils.isBlank(referer)) {
-            context.sendError(HttpServletResponse.SC_BAD_REQUEST);
+        String state = context.param("state");
+        if (!STATES.contains(state)) {
+            context.sendError(400);
 
             return;
         }
         STATES.remove(state);
-        referer = URLs.decode(referer);
-        final String accessToken = context.param("ak");
-        final JSONObject userInfo = GitHubs.getGitHubUserInfo(accessToken);
-        if (null == userInfo) {
-            LOGGER.log(Level.WARN, "Can't get user info with token [" + accessToken + "]");
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+        String referer = URLs.decode(state);
+        referer = StringUtils.substring(referer, 16);
 
-            return;
-        }
-
-        final HttpServletResponse response = context.getResponse();
-        final HttpServletRequest request = context.getRequest();
-        final String openId = userInfo.optString("openId");
-        final String userName = userInfo.optString(User.USER_NAME);
-        final String userAvatar = userInfo.optString(UserExt.USER_AVATAR);
+        final Response response = context.getResponse();
+        final Request request = context.getRequest();
+        final String openId = context.param("userId");
+        final String userName = context.param(User.USER_NAME);
+        final String userAvatar = context.param("avatar");
 
         JSONObject user = userQueryService.getUserByGitHubId(openId);
         if (null == user) {
@@ -184,7 +151,7 @@ public class OAuthProcessor {
                 final JSONObject initReq = new JSONObject();
                 initReq.put(User.USER_NAME, userName);
                 initReq.put(UserExt.USER_AVATAR, userAvatar);
-                initReq.put(UserExt.USER_B3_KEY, openId);
+                initReq.put(UserExt.USER_B3_KEY, userName);
                 initReq.put(UserExt.USER_GITHUB_ID, openId);
                 initService.init(initReq);
             } else {
@@ -195,40 +162,52 @@ public class OAuthProcessor {
                     addUserReq.put(UserExt.USER_AVATAR, userAvatar);
                     addUserReq.put(User.USER_ROLE, Role.VISITOR_ROLE);
                     addUserReq.put(UserExt.USER_GITHUB_ID, openId);
-                    addUserReq.put(UserExt.USER_B3_KEY, openId);
+                    addUserReq.put(UserExt.USER_B3_KEY, userName);
                     try {
                         userMgmtService.addUser(addUserReq);
                     } catch (final Exception e) {
-                        LOGGER.log(Level.ERROR, "Register via oauth failed", e);
-                        context.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                        LOGGER.log(Level.ERROR, "Registers via oauth failed", e);
+                        context.sendError(500);
 
                         return;
                     }
                 } else {
                     user.put(UserExt.USER_GITHUB_ID, openId);
+                    user.put(User.USER_NAME, userName);
+                    user.put(UserExt.USER_AVATAR, userAvatar);
                     try {
                         userMgmtService.updateUser(user);
                     } catch (final Exception e) {
-                        LOGGER.log(Level.ERROR, "Update user GitHub id failed", e);
-                        context.sendError(HttpServletResponse.SC_INTERNAL_SERVER_ERROR);
+                        LOGGER.log(Level.ERROR, "Updates user GitHub id failed", e);
+                        context.sendError(500);
 
                         return;
                     }
                 }
+            }
+        } else {
+            user.put(User.USER_NAME, userName);
+            user.put(UserExt.USER_AVATAR, userAvatar);
+            try {
+                userMgmtService.updateUser(user);
+            } catch (final Exception e) {
+                LOGGER.log(Level.ERROR, "Updates user name failed", e);
+                context.sendError(500);
+
+                return;
             }
         }
 
         user = userQueryService.getUserByName(userName);
         if (null == user) {
             LOGGER.log(Level.WARN, "Can't get user by name [" + userName + "]");
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
 
-        final String redirect = StringUtils.substringBeforeLast(referer, "__");
         Solos.login(user, response);
-        context.sendRedirect(redirect);
+        context.sendRedirect(referer);
         LOGGER.log(Level.INFO, "Logged in [name={0}, remoteAddr={1}] with oauth", userName, Requests.getRemoteAddr(request));
     }
 }

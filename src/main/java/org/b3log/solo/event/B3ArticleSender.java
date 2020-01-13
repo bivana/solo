@@ -29,8 +29,7 @@ import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.model.User;
-import org.b3log.latke.util.Strings;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.Server;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
@@ -48,7 +47,7 @@ import org.json.JSONObject;
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
  * @author <a href="https://hacpai.com/member/armstrong">ArmstrongCN</a>
- * @version 1.0.2.20, Apr 13, 2019
+ * @version 1.0.2.25, Jan 12, 2020
  * @since 0.3.1
  */
 @Singleton
@@ -90,13 +89,7 @@ public class B3ArticleSender extends AbstractEventListener<JSONObject> {
             }
 
             if (!originalArticle.optBoolean(Common.POST_TO_COMMUNITY)) {
-                LOGGER.log(Level.INFO, "Article [title={0}] push flag [postToCommunity] is false, ignored push to Rhy", title);
-
-                return;
-            }
-
-            if (StringUtils.containsIgnoreCase(Latkes.getServePath(), ("localhost")) || Strings.isIPv4(Latkes.getServerHost())) {
-                LOGGER.log(Level.INFO, "Solo is running on local server, ignored push article [title={0}] to Rhy", title);
+                LOGGER.log(Level.INFO, "Article [title={0}] push flag [postToCommunity] is [false], ignored push to Rhy", title);
 
                 return;
             }
@@ -117,7 +110,7 @@ public class B3ArticleSender extends AbstractEventListener<JSONObject> {
                     put("title", preference.getString(Option.ID_C_BLOG_TITLE)).
                     put("host", Latkes.getServePath()).
                     put("name", "Solo").
-                    put("ver", SoloServletListener.VERSION).
+                    put("ver", Server.VERSION).
                     put("userName", author.optString(User.USER_NAME)).
                     put("userB3Key", author.optString(UserExt.USER_B3_KEY));
             final JSONObject requestJSONObject = new JSONObject().
@@ -126,8 +119,9 @@ public class B3ArticleSender extends AbstractEventListener<JSONObject> {
             final HttpResponse response = HttpRequest.post("https://rhythm.b3log.org/api/article").bodyText(requestJSONObject.toString()).
                     connectionTimeout(3000).timeout(7000).trustAllCerts(true).
                     contentTypeJson().header("User-Agent", Solos.USER_AGENT).send();
-
-            LOGGER.log(Level.INFO, "Pushed an article [title={0}] to Rhy, response [{1}]", title, response.toString());
+            response.charset("UTF-8");
+            final JSONObject result = new JSONObject(response.bodyText());
+            LOGGER.log(Level.INFO, "Pushed an article [title=" + title + "] to Rhy, result [" + result.optString(Keys.MSG) + "]");
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Pushes an article to Rhy failed: " + e.getMessage());
         }

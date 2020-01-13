@@ -25,6 +25,10 @@ import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.event.Event;
 import org.b3log.latke.event.EventManager;
+import org.b3log.latke.http.RequestContext;
+import org.b3log.latke.http.Response;
+import org.b3log.latke.http.annotation.Before;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.ioc.Singleton;
 import org.b3log.latke.logging.Level;
@@ -32,14 +36,8 @@ import org.b3log.latke.logging.Logger;
 import org.b3log.latke.model.Plugin;
 import org.b3log.latke.model.User;
 import org.b3log.latke.plugin.ViewLoadEventData;
-import org.b3log.latke.repository.jdbc.util.Connections;
 import org.b3log.latke.service.LangPropsService;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.Before;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
-import org.b3log.latke.util.Execs;
-import org.b3log.latke.util.Strings;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.Server;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.Option;
 import org.b3log.solo.model.UserExt;
@@ -51,22 +49,17 @@ import org.b3log.solo.util.Markdowns;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 
-import javax.servlet.ServletOutputStream;
-import javax.servlet.http.HttpServletResponse;
 import java.io.File;
 import java.io.FileInputStream;
 import java.io.FileOutputStream;
 import java.io.OutputStream;
-import java.sql.Connection;
-import java.sql.ResultSet;
-import java.sql.Statement;
 import java.util.*;
 
 /**
  * Admin console render processing.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.7.0.14, Apr 24, 2019
+ * @version 1.7.0.17, Dec 15, 2019
  * @since 0.4.1
  */
 @Singleton
@@ -138,7 +131,7 @@ public class AdminConsole {
             dataModel.put(Option.ID_C_LOCALE_STRING, preference.getString(Option.ID_C_LOCALE_STRING));
             dataModel.put(Option.ID_C_BLOG_TITLE, preference.getString(Option.ID_C_BLOG_TITLE));
             dataModel.put(Option.ID_C_BLOG_SUBTITLE, preference.getString(Option.ID_C_BLOG_SUBTITLE));
-            dataModel.put(Common.VERSION, SoloServletListener.VERSION);
+            dataModel.put(Common.VERSION, Server.VERSION);
             dataModel.put(Common.STATIC_RESOURCE_VERSION, Latkes.getStaticResourceVersion());
             dataModel.put(Common.YEAR, String.valueOf(Calendar.getInstance().get(Calendar.YEAR)));
             dataModel.put(Option.ID_C_ARTICLE_LIST_DISPLAY_COUNT, preference.getInt(Option.ID_C_ARTICLE_LIST_DISPLAY_COUNT));
@@ -147,8 +140,7 @@ public class AdminConsole {
             dataModel.put(Option.CATEGORY_C_SKIN, skin.optString(Option.ID_C_SKIN_DIR_NAME));
             Keys.fillRuntime(dataModel);
             dataModelService.fillMinified(dataModel);
-            // 使用 Marked 时代码高亮问题 https://github.com/b3log/solo/issues/12614
-            dataModel.put(Common.MARKED_AVAILABLE, Markdowns.MARKDOWN_HTTP_AVAILABLE);
+            dataModel.put(Common.LUTE_AVAILABLE, Markdowns.LUTE_AVAILABLE);
             // 内置 HTTPS+CDN 文件存储 https://github.com/b3log/solo/issues/12556
             dataModel.put(Common.UPLOAD_TOKEN, "");
             dataModel.put(Common.UPLOAD_URL, "");
@@ -183,8 +175,8 @@ public class AdminConsole {
         final Map<String, String> langs = langPropsService.getAll(locale);
         final Map<String, Object> dataModel = renderer.getDataModel();
 
-        dataModel.put("supportExport", Latkes.RuntimeDatabase.MYSQL == Latkes.getRuntimeDatabase()
-                || Latkes.RuntimeDatabase.H2 == Latkes.getRuntimeDatabase());
+        // 使用 MySQL 时不启用 SQL 导出功能 https://github.com/b3log/solo/issues/12806
+        dataModel.put("supportExport", Latkes.RuntimeDatabase.H2 == Latkes.getRuntimeDatabase());
         dataModel.putAll(langs);
         Keys.fillRuntime(dataModel);
         dataModel.put(Option.ID_C_LOCALE_STRING, locale.toString());
@@ -233,10 +225,10 @@ public class AdminConsole {
      * @param context the specified request context
      */
     public void exportSQL(final RequestContext context) {
-        final HttpServletResponse response = context.getResponse();
+        final Response response = context.getResponse();
 
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
 
             return;
         }
@@ -247,101 +239,18 @@ public class AdminConsole {
             // ignored
         }
 
-        final Latkes.RuntimeDatabase runtimeDatabase = Latkes.getRuntimeDatabase();
-        if (Latkes.RuntimeDatabase.H2 != runtimeDatabase && Latkes.RuntimeDatabase.MYSQL != runtimeDatabase) {
-            context.renderJSON().renderMsg("Just support MySQL/H2 export now");
+        final byte[] zipData = exportService.exportSQL();
+        if (null == zipData) {
+            context.sendError(500);
 
             return;
         }
 
-        final String dbUser = Latkes.getLocalProperty("jdbc.username");
-        final String dbPwd = Latkes.getLocalProperty("jdbc.password");
-        final String dbURL = Latkes.getLocalProperty("jdbc.URL");
-        String sql; // exported SQL script
-
-        if (Latkes.RuntimeDatabase.MYSQL == runtimeDatabase) {
-            String db = StringUtils.substringAfterLast(dbURL, "/");
-            db = StringUtils.substringBefore(db, "?");
-
-            try {
-                if (StringUtils.isNotBlank(dbPwd)) {
-                    sql = Execs.exec("mysqldump -u" + dbUser + " -p" + dbPwd + " --databases " + db, 60 * 1000 * 5);
-                } else {
-                    sql = Execs.exec("mysqldump -u" + dbUser + " --databases " + db, 60 * 1000 * 5);
-                }
-            } catch (final Exception e) {
-                LOGGER.log(Level.ERROR, "Export failed", e);
-                context.renderJSON().renderMsg("Export failed, please check log");
-
-                return;
-            }
-        } else if (Latkes.RuntimeDatabase.H2 == runtimeDatabase) {
-            try (final Connection connection = Connections.getConnection();
-                 final Statement statement = connection.createStatement()) {
-                final StringBuilder sqlBuilder = new StringBuilder();
-                final ResultSet resultSet = statement.executeQuery("SCRIPT");
-                while (resultSet.next()) {
-                    final String stmt = resultSet.getString(1);
-                    sqlBuilder.append(stmt).append(Strings.LINE_SEPARATOR);
-                }
-                resultSet.close();
-
-                sql = sqlBuilder.toString();
-            } catch (final Exception e) {
-                LOGGER.log(Level.ERROR, "Export failed", e);
-                context.renderJSON().renderMsg("Export failed, please check log");
-
-                return;
-            }
-        } else {
-            context.renderJSON().renderMsg("Just support MySQL/H2 export now");
-
-            return;
-        }
-
-        if (StringUtils.isBlank(sql)) {
-            LOGGER.log(Level.ERROR, "Export failed, executing export script returns empty");
-            context.renderJSON().renderMsg("Export failed, please check log");
-
-            return;
-        }
-
-        final String tmpDir = System.getProperty("java.io.tmpdir");
         final String date = DateFormatUtils.format(new Date(), "yyyyMMddHHmmss");
-        String localFilePath = tmpDir + File.separator + "solo-" + date + ".sql";
-        LOGGER.trace(localFilePath);
-        final File localFile = new File(localFilePath);
-
-        try {
-            final byte[] data = sql.getBytes("UTF-8");
-            try (final OutputStream output = new FileOutputStream(localFile)) {
-                IOUtils.write(data, output);
-            }
-
-            final File zipFile = ZipUtil.zip(localFile);
-            byte[] zipData;
-            try (final FileInputStream inputStream = new FileInputStream(zipFile)) {
-                zipData = IOUtils.toByteArray(inputStream);
-            }
-
-            response.setContentType("application/zip");
-            final String fileName = "solo-sql-" + date + ".zip";
-            response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
-
-            final ServletOutputStream outputStream = response.getOutputStream();
-            outputStream.write(zipData);
-            outputStream.flush();
-            outputStream.close();
-
-            // 导出 SQL 包后清理临时文件 https://github.com/b3log/solo/issues/12770
-            localFile.delete();
-            zipFile.delete();
-        } catch (final Exception e) {
-            LOGGER.log(Level.ERROR, "Export failed", e);
-            context.renderJSON().renderMsg("Export failed, please check log");
-
-            return;
-        }
+        response.setContentType("application/zip");
+        final String fileName = "solo-sql-" + date + ".zip";
+        response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
+        response.sendBytes(zipData);
     }
 
     /**
@@ -350,9 +259,9 @@ public class AdminConsole {
      * @param context the specified request context
      */
     public void exportJSON(final RequestContext context) {
-        final HttpServletResponse response = context.getResponse();
+        final Response response = context.getResponse();
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
 
             return;
         }
@@ -377,14 +286,12 @@ public class AdminConsole {
                 IOUtils.write(data, output);
             }
 
-            try (final FileInputStream inputStream = new FileInputStream(ZipUtil.zip(localFile));
-                 final ServletOutputStream outputStream = response.getOutputStream()) {
+            try (final FileInputStream inputStream = new FileInputStream(ZipUtil.zip(localFile))) {
                 final byte[] zipData = IOUtils.toByteArray(inputStream);
                 response.setContentType("application/zip");
                 final String fileName = "solo-json-" + date + ".zip";
                 response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
-                outputStream.write(zipData);
-                outputStream.flush();
+                response.sendBytes(zipData);
             }
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Export failed", e);
@@ -400,9 +307,9 @@ public class AdminConsole {
      * @param context the specified request context
      */
     public void exportHexo(final RequestContext context) {
-        final HttpServletResponse response = context.getResponse();
+        final Response response = context.getResponse();
         if (!Solos.isAdminLoggedIn(context)) {
-            context.sendError(HttpServletResponse.SC_UNAUTHORIZED);
+            context.sendError(401);
 
             return;
         }
@@ -451,10 +358,7 @@ public class AdminConsole {
                 response.setHeader("Content-Disposition", "attachment; filename=\"" + fileName + "\"");
             }
 
-            try (final ServletOutputStream outputStream = response.getOutputStream()) {
-                outputStream.write(zipData);
-                outputStream.flush();
-            }
+            response.sendBytes(zipData);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Export failed", e);
             context.renderJSON().renderMsg("Export failed, please check log");

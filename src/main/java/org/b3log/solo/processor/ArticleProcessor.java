@@ -23,6 +23,12 @@ import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
 import org.b3log.latke.event.Event;
 import org.b3log.latke.event.EventManager;
+import org.b3log.latke.http.*;
+import org.b3log.latke.http.annotation.RequestProcessing;
+import org.b3log.latke.http.annotation.RequestProcessor;
+import org.b3log.latke.http.renderer.AbstractFreeMarkerRenderer;
+import org.b3log.latke.http.renderer.JsonRenderer;
+import org.b3log.latke.http.renderer.TextHtmlRenderer;
 import org.b3log.latke.ioc.Inject;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
@@ -30,29 +36,18 @@ import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.User;
 import org.b3log.latke.service.LangPropsService;
 import org.b3log.latke.service.ServiceException;
-import org.b3log.latke.servlet.HttpMethod;
-import org.b3log.latke.servlet.RequestContext;
-import org.b3log.latke.servlet.annotation.RequestProcessing;
-import org.b3log.latke.servlet.annotation.RequestProcessor;
-import org.b3log.latke.servlet.renderer.AbstractFreeMarkerRenderer;
-import org.b3log.latke.servlet.renderer.JsonRenderer;
-import org.b3log.latke.servlet.renderer.TextHtmlRenderer;
 import org.b3log.latke.util.*;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.Server;
 import org.b3log.solo.event.EventTypes;
 import org.b3log.solo.model.*;
 import org.b3log.solo.processor.console.ConsoleRenderer;
 import org.b3log.solo.service.*;
-import org.b3log.solo.util.Emotions;
 import org.b3log.solo.util.Markdowns;
 import org.b3log.solo.util.Skins;
 import org.b3log.solo.util.Solos;
 import org.json.JSONObject;
 import org.jsoup.Jsoup;
 
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
 import java.util.*;
 
 /**
@@ -60,7 +55,7 @@ import java.util.*;
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
  * @author <a href="http://zephyr.b3log.org">Zephyr</a>
- * @version 1.4.5.6, Apr 18, 2019
+ * @version 1.4.5.9, Jan 9, 2020
  * @since 0.3.1
  */
 @RequestProcessor
@@ -170,8 +165,7 @@ public class ArticleProcessor {
         }
 
         try {
-            String html = Emotions.convert(markdownText);
-            html = Markdowns.toHTML(html);
+            final String html = Markdowns.toHTML(markdownText);
             result.put(Common.DATA, html);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
@@ -189,14 +183,14 @@ public class ArticleProcessor {
     public void showArticlePwdForm(final RequestContext context) {
         final String articleId = context.param("articleId");
         if (StringUtils.isBlank(articleId)) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
 
         final JSONObject article = articleQueryService.getArticleById(articleId);
         if (null == article) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
@@ -218,7 +212,7 @@ public class ArticleProcessor {
 
         final JSONObject preference = optionQueryService.getPreference();
         dataModel.put(Option.ID_C_BLOG_TITLE, preference.getString(Option.ID_C_BLOG_TITLE));
-        dataModel.put(Common.VERSION, SoloServletListener.VERSION);
+        dataModel.put(Common.VERSION, Server.VERSION);
         dataModel.put(Common.STATIC_RESOURCE_VERSION, Latkes.getStaticResourceVersion());
         dataModel.put(Common.YEAR, String.valueOf(Calendar.getInstance().get(Calendar.YEAR)));
 
@@ -236,22 +230,24 @@ public class ArticleProcessor {
     @RequestProcessing(value = "/console/article-pwd", method = HttpMethod.POST)
     public void onArticlePwdForm(final RequestContext context) {
         try {
-            final HttpServletRequest request = context.getRequest();
+            final Request request = context.getRequest();
             final String articleId = context.param("articleId");
             final String pwdTyped = context.param("pwdTyped");
 
             final JSONObject article = articleQueryService.getArticleById(articleId);
-
             if (article.getString(Article.ARTICLE_VIEW_PWD).equals(pwdTyped)) {
-                final HttpSession session = request.getSession();
+                final Session session = request.getSession();
                 if (null != session) {
-                    Map<String, String> viewPwds = (Map<String, String>) session.getAttribute(Common.ARTICLES_VIEW_PWD);
-                    if (null == viewPwds) {
-                        viewPwds = new HashMap<>();
+                    JSONObject viewPwds;
+                    final String viewPwdsStr = session.getAttribute(Common.ARTICLES_VIEW_PWD);
+                    if (null == viewPwdsStr) {
+                        viewPwds = new JSONObject();
+                    } else {
+                        viewPwds = new JSONObject(viewPwdsStr);
                     }
 
                     viewPwds.put(articleId, pwdTyped);
-                    session.setAttribute(Common.ARTICLES_VIEW_PWD, viewPwds);
+                    session.setAttribute(Common.ARTICLES_VIEW_PWD, viewPwds.toString());
                 }
 
                 context.sendRedirect(Latkes.getServePath() + article.getString(Article.ARTICLE_PERMALINK));
@@ -263,7 +259,7 @@ public class ArticleProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, "Processes article view password form submits failed", e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -322,18 +318,18 @@ public class ArticleProcessor {
             return;
         }
 
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         Stopwatchs.start("Get Relevant Articles");
         final String articleId = context.pathVar("id");
         if (StringUtils.isBlank(articleId)) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
 
         final JSONObject article = articleQueryService.getArticleById(articleId);
         if (null == article) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
@@ -355,7 +351,7 @@ public class ArticleProcessor {
      */
     @RequestProcessing(value = "/get-article-content", method = HttpMethod.GET)
     public void getArticleContent(final RequestContext context) {
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final String articleId = context.param("id");
         if (StringUtils.isBlank(articleId)) {
             return;
@@ -387,7 +383,7 @@ public class ArticleProcessor {
     @RequestProcessing(value = "/articles", method = HttpMethod.GET)
     public void getArticlesByPage(final RequestContext context) {
         final JSONObject jsonObject = new JSONObject();
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final int currentPageNum = Paginator.getPage(request);
 
         Stopwatchs.start("Get Articles Paged [pageNum=" + currentPageNum + ']');
@@ -430,7 +426,7 @@ public class ArticleProcessor {
     public void getTagArticlesByPage(final RequestContext context) {
         final JSONObject jsonObject = new JSONObject();
 
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final String tagTitle = context.pathVar("tagTitle");
         final int currentPageNum = Paginator.getPage(request);
         Stopwatchs.start("Get Tag-Articles Paged [tagTitle=" + tagTitle + ", pageNum=" + currentPageNum + ']');
@@ -483,7 +479,7 @@ public class ArticleProcessor {
     public void getArchivesArticlesByPage(final RequestContext context) {
         final JSONObject jsonObject = new JSONObject();
 
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final String archiveDateString = context.pathVar("yyyy") + "/" + context.pathVar("MM");
         final int currentPageNum = Paginator.getPage(request);
 
@@ -502,7 +498,7 @@ public class ArticleProcessor {
             final JSONObject archiveDate = archiveQueryResult.getJSONObject(ArchiveDate.ARCHIVE_DATE);
             final String archiveDateId = archiveDate.getString(Keys.OBJECT_ID);
 
-            final int articleCount = archiveDateQueryService.getArchiveDateArticleCount(archiveDateId);
+            final int articleCount = archiveDateQueryService.getArchiveDatePublishedArticleCount(archiveDateId);
             final int pageCount = (int) Math.ceil((double) articleCount / (double) pageSize);
 
             final List<JSONObject> articles = articleQueryService.getArticlesByArchiveDate(archiveDateId, currentPageNum, pageSize);
@@ -535,7 +531,7 @@ public class ArticleProcessor {
     public void getAuthorsArticlesByPage(final RequestContext context) {
         final JSONObject jsonObject = new JSONObject();
 
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final String authorId = context.pathVar("author");
         final int currentPageNum = Paginator.getPage(request);
 
@@ -548,7 +544,7 @@ public class ArticleProcessor {
 
             final JSONObject authorRet = userQueryService.getUser(authorId);
             if (null == authorRet) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -583,7 +579,7 @@ public class ArticleProcessor {
      */
     @RequestProcessing(value = "/authors/{author}", method = HttpMethod.GET)
     public void showAuthorArticles(final RequestContext context) {
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, "author-articles.ftl");
 
         try {
@@ -593,7 +589,7 @@ public class ArticleProcessor {
 
             final JSONObject preference = optionQueryService.getPreference();
             if (null == preference) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -603,14 +599,14 @@ public class ArticleProcessor {
 
             final JSONObject result = userQueryService.getUser(authorId);
             if (null == result) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
 
             final JSONObject articlesResult = articleQueryService.getArticlesByAuthorId(authorId, currentPageNum, pageSize);
             if (null == articlesResult) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -623,7 +619,7 @@ public class ArticleProcessor {
             final Map<String, Object> dataModel = renderer.getDataModel();
             final JSONObject author = result.getJSONObject(User.USER);
             prepareShowAuthorArticles(pageNums, dataModel, pageCount, currentPageNum, articles, author);
-            final HttpServletResponse response = context.getResponse();
+            final Response response = context.getResponse();
             dataModelService.fillCommon(context, dataModel, preference);
             dataModelService.fillFaviconURL(dataModel, preference);
             dataModelService.fillUsite(dataModel);
@@ -633,7 +629,7 @@ public class ArticleProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -644,7 +640,7 @@ public class ArticleProcessor {
      */
     @RequestProcessing(value = "/archives/{yyyy}/{MM}", method = HttpMethod.GET)
     public void showArchiveArticles(final RequestContext context) {
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, "archive-articles.ftl");
 
         try {
@@ -654,7 +650,7 @@ public class ArticleProcessor {
             final JSONObject result = archiveDateQueryService.getByArchiveDateString(archiveDateString);
             if (null == result) {
                 LOGGER.log(Level.DEBUG, "Can not find articles for the specified archive date[string={0}]", archiveDateString);
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -665,12 +661,12 @@ public class ArticleProcessor {
             final JSONObject preference = optionQueryService.getPreference();
             final int pageSize = preference.getInt(Option.ID_C_ARTICLE_LIST_DISPLAY_COUNT);
 
-            final int articleCount = archiveDateQueryService.getArchiveDateArticleCount(archiveDateId);
+            final int articleCount = archiveDateQueryService.getArchiveDatePublishedArticleCount(archiveDateId);
             final int pageCount = (int) Math.ceil((double) articleCount / (double) pageSize);
 
             final List<JSONObject> articles = articleQueryService.getArticlesByArchiveDate(archiveDateId, currentPageNum, pageSize);
             if (articles.isEmpty()) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
+                context.sendError(404);
 
                 return;
             }
@@ -680,7 +676,7 @@ public class ArticleProcessor {
             final Map<String, Object> dataModel = renderer.getDataModel();
             Skins.fillLangs(preference.optString(Option.ID_C_LOCALE_STRING), (String) context.attr(Keys.TEMAPLTE_DIR_NAME), dataModel);
             prepareShowArchiveArticles(preference, dataModel, articles, currentPageNum, pageCount, archiveDateString, archiveDate);
-            final HttpServletResponse response = context.getResponse();
+            final Response response = context.getResponse();
             dataModelService.fillCommon(context, dataModel, preference);
             dataModelService.fillFaviconURL(dataModel, preference);
             dataModelService.fillUsite(dataModel);
@@ -688,7 +684,7 @@ public class ArticleProcessor {
             statisticMgmtService.incBlogViewCount(context, response);
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -702,7 +698,7 @@ public class ArticleProcessor {
         // See PermalinkHandler#dispatchToArticleProcessor()
         final JSONObject article = (JSONObject) context.attr(Article.ARTICLE);
         if (null == article) {
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
 
             return;
         }
@@ -713,14 +709,6 @@ public class ArticleProcessor {
         final AbstractFreeMarkerRenderer renderer = new SkinRenderer(context, "article.ftl");
 
         try {
-            final JSONObject preference = optionQueryService.getPreference();
-            final boolean allowVisitDraftViaPermalink = preference.getBoolean(Option.ID_C_ALLOW_VISIT_DRAFT_VIA_PERMALINK);
-            if (Article.ARTICLE_STATUS_C_PUBLISHED != article.optInt(Article.ARTICLE_STATUS) && !allowVisitDraftViaPermalink) {
-                context.sendError(HttpServletResponse.SC_NOT_FOUND);
-
-                return;
-            }
-
             LOGGER.log(Level.TRACE, "Article [title={0}]", article.getString(Article.ARTICLE_TITLE));
             articleQueryService.markdown(article);
 
@@ -729,6 +717,7 @@ public class ArticleProcessor {
             // For <meta name="description" content="${article.articleAbstract}"/>
             final String metaDescription = Jsoup.parse(article.optString(Article.ARTICLE_ABSTRACT)).text();
             article.put(Article.ARTICLE_ABSTRACT, metaDescription);
+            final JSONObject preference = optionQueryService.getPreference();
             if (preference.getBoolean(Option.ID_C_ENABLE_ARTICLE_UPDATE_HINT)) {
                 article.put(Common.HAS_UPDATED, articleQueryService.hasUpdated(article));
             } else {
@@ -748,7 +737,7 @@ public class ArticleProcessor {
 
             prepareShowArticle(preference, dataModel, article);
 
-            final HttpServletResponse response = context.getResponse();
+            final Response response = context.getResponse();
             dataModelService.fillCommon(context, dataModel, preference);
             dataModelService.fillFaviconURL(dataModel, preference);
             dataModelService.fillUsite(dataModel);
@@ -767,7 +756,7 @@ public class ArticleProcessor {
         } catch (final Exception e) {
             LOGGER.log(Level.ERROR, e.getMessage(), e);
 
-            context.sendError(HttpServletResponse.SC_NOT_FOUND);
+            context.sendError(404);
         }
     }
 
@@ -968,7 +957,12 @@ public class ArticleProcessor {
         Stopwatchs.end();
 
         dataModel.put(Option.ID_C_EXTERNAL_RELEVANT_ARTICLES_DISPLAY_CNT, preference.getInt(Option.ID_C_EXTERNAL_RELEVANT_ARTICLES_DISPLAY_CNT));
-        dataModel.put(Option.ID_C_RANDOM_ARTICLES_DISPLAY_CNT, preference.getInt(Option.ID_C_RANDOM_ARTICLES_DISPLAY_CNT));
-        dataModel.put(Option.ID_C_RELEVANT_ARTICLES_DISPLAY_CNT, preference.getInt(Option.ID_C_RELEVANT_ARTICLES_DISPLAY_CNT));
+        if (!Solos.GEN_STATIC_SITE) {
+            dataModel.put(Option.ID_C_RANDOM_ARTICLES_DISPLAY_CNT, preference.getInt(Option.ID_C_RANDOM_ARTICLES_DISPLAY_CNT));
+            dataModel.put(Option.ID_C_RELEVANT_ARTICLES_DISPLAY_CNT, preference.getInt(Option.ID_C_RELEVANT_ARTICLES_DISPLAY_CNT));
+        } else {
+            dataModel.put(Option.ID_C_RANDOM_ARTICLES_DISPLAY_CNT, 0);
+            dataModel.put(Option.ID_C_RELEVANT_ARTICLES_DISPLAY_CNT, 0);
+        }
     }
 }

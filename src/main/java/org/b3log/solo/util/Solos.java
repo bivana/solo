@@ -23,37 +23,35 @@ import org.apache.commons.lang.RandomStringUtils;
 import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Keys;
 import org.b3log.latke.Latkes;
+import org.b3log.latke.http.*;
 import org.b3log.latke.ioc.BeanManager;
 import org.b3log.latke.logging.Level;
 import org.b3log.latke.logging.Logger;
 import org.b3log.latke.model.Pagination;
 import org.b3log.latke.model.Role;
 import org.b3log.latke.model.User;
-import org.b3log.latke.servlet.RequestContext;
 import org.b3log.latke.util.CollectionUtils;
 import org.b3log.latke.util.Crypts;
 import org.b3log.latke.util.Strings;
-import org.b3log.solo.SoloServletListener;
+import org.b3log.solo.Server;
 import org.b3log.solo.model.Article;
 import org.b3log.solo.model.Common;
 import org.b3log.solo.model.UserExt;
 import org.b3log.solo.repository.UserRepository;
+import org.json.JSONArray;
 import org.json.JSONObject;
 
-import javax.servlet.http.Cookie;
-import javax.servlet.http.HttpServletRequest;
-import javax.servlet.http.HttpServletResponse;
-import javax.servlet.http.HttpSession;
-import java.util.HashMap;
-import java.util.Map;
+import java.util.List;
 import java.util.MissingResourceException;
 import java.util.ResourceBundle;
+import java.util.Set;
+import java.util.concurrent.CopyOnWriteArrayList;
 
 /**
  * Solo utilities.
  *
  * @author <a href="http://88250.b3log.org">Liang Ding</a>
- * @version 1.8.0.2, Apr 2, 2019
+ * @version 1.10.0.0, Jan 11, 2020
  * @since 2.8.0
  */
 public final class Solos {
@@ -71,12 +69,12 @@ public final class Solos {
     /**
      * Solo User-Agent.
      */
-    public static final String USER_AGENT = "Solo/" + SoloServletListener.VERSION + "; +https://github.com/b3log/solo";
+    public static final String USER_AGENT = "Solo/" + Server.VERSION + "; +https://github.com/88250/solo";
 
     /**
      * Cookie expiry in 30 days.
      */
-    private static final int COOKIE_EXPIRY = 60 * 60 * 24 * 30;
+    private static final int COOKIE_EXPIRY = 60 * 60 * 24 * 7;
 
     /**
      * Cookie name.
@@ -89,9 +87,9 @@ public final class Solos {
     public static final String COOKIE_SECRET;
 
     /**
-     * Cookie HTTP only.
+     * Indicates generating a static site.
      */
-    public static final boolean COOKIE_HTTP_ONLY;
+    public static boolean GEN_STATIC_SITE = false;
 
     static {
         ResourceBundle solo;
@@ -116,19 +114,35 @@ public final class Solos {
             cookieSecret = RandomStringUtils.randomAlphanumeric(8);
         }
         COOKIE_SECRET = cookieSecret;
-
-        COOKIE_HTTP_ONLY = Boolean.valueOf(Latkes.getLocalProperty("cookieHttpOnly"));
     }
 
     /**
-     * Gets the current process's id.
-     *
-     * @return the current process's id
+     * Blacklist IPs.
      */
-    public static long currentPID() {
-        final String processName = java.lang.management.ManagementFactory.getRuntimeMXBean().getName();
+    public static final List<String> BLACKLIST_IPS = new CopyOnWriteArrayList<>();
 
-        return Long.parseLong(processName.split("@")[0]);
+    /**
+     * Reloads blacklist IPs.
+     */
+    public static void reloadBlacklistIPs() {
+        try {
+            final HttpResponse res = HttpRequest.get("https://hacpai.com/apis/blacklist/ip").trustAllCerts(true).
+                    connectionTimeout(3000).timeout(7000).header("User-Agent", Solos.USER_AGENT).send();
+            if (200 != res.statusCode()) {
+                return;
+            }
+            res.charset("UTF-8");
+            final JSONObject result = new JSONObject(res.bodyText());
+            if (0 != result.optInt(Keys.CODE)) {
+                return;
+            }
+
+            final JSONArray ips = result.optJSONArray(Common.DATA);
+            BLACKLIST_IPS.clear();
+            BLACKLIST_IPS.addAll(CollectionUtils.jsonArrayToList(ips));
+        } catch (final Exception e) {
+            // ignored
+        }
     }
 
     /**
@@ -138,6 +152,16 @@ public final class Solos {
      */
     public static JSONObject newSucc() {
         return new JSONObject().put(Keys.CODE, 0).put(Keys.MSG, "");
+    }
+
+    /**
+     * Checks whether Solo is running on the local server.
+     *
+     * @return {@code true} if it is, returns {@code false} otherwise
+     */
+    public static boolean isLocalServer() {
+        return StringUtils.containsIgnoreCase(Latkes.getServePath(), "localhost") || Strings.isIPv4(Latkes.getServerHost()) ||
+                (StringUtils.isNotBlank(Latkes.getServerPort())) && !"80".equals(Latkes.getServerPort()) && !"443".equals(Latkes.getServerPort());
     }
 
     /**
@@ -193,7 +217,7 @@ public final class Solos {
             final HttpResponse res = HttpRequest.post("https://hacpai.com/apis/upload/token").trustAllCerts(true).
                     body(requestJSON.toString()).connectionTimeout(3000).timeout(7000).header("User-Agent", Solos.USER_AGENT).send();
             uploadTokenCheckTime = now;
-            if (HttpServletResponse.SC_OK != res.statusCode()) {
+            if (200 != res.statusCode()) {
                 return null;
             }
             res.charset("UTF-8");
@@ -254,17 +278,16 @@ public final class Solos {
      * @param response the specified response
      * @return the current logged-in user, returns {@code null} if not found
      */
-    public static JSONObject getCurrentUser(final HttpServletRequest request, final HttpServletResponse response) {
-        final Cookie[] cookies = request.getCookies();
-        if (null == cookies || 0 == cookies.length) {
+    public static JSONObject getCurrentUser(final Request request, final Response response) {
+        final Set<Cookie> cookies = request.getCookies();
+        if (cookies.isEmpty()) {
             return null;
         }
 
         final BeanManager beanManager = BeanManager.getInstance();
         final UserRepository userRepository = beanManager.getReference(UserRepository.class);
         try {
-            for (int i = 0; i < cookies.length; i++) {
-                final Cookie cookie = cookies[i];
+            for (final Cookie cookie : cookies) {
                 if (!COOKIE_NAME.equals(cookie.getName())) {
                     continue;
                 }
@@ -287,16 +310,15 @@ public final class Solos {
                 final String token = StringUtils.substringBeforeLast(tokenVal, ":");
                 if (StringUtils.equals(b3Key, token)) {
                     login(user, response);
-
                     return user;
                 }
             }
         } catch (final Exception e) {
             LOGGER.log(Level.TRACE, "Parses cookie failed, clears the cookie [name=" + COOKIE_NAME + "]");
-
-            final Cookie cookie = new Cookie(COOKIE_NAME, null);
+            final Cookie cookie = new Cookie(COOKIE_NAME, "");
             cookie.setMaxAge(0);
             cookie.setPath("/");
+            cookie.setHttpOnly(true);
             response.addCookie(cookie);
         }
 
@@ -309,7 +331,7 @@ public final class Solos {
      * @param response the specified response
      * @param user     the specified user
      */
-    public static void login(final JSONObject user, final HttpServletResponse response) {
+    public static void login(final JSONObject user, final Response response) {
         try {
             final String userId = user.optString(Keys.OBJECT_ID);
             final JSONObject cookieJSONObject = new JSONObject();
@@ -319,9 +341,9 @@ public final class Solos {
             cookieJSONObject.put(Keys.TOKEN, b3Key + ":" + random);
             final String cookieValue = Crypts.encryptByAES(cookieJSONObject.toString(), COOKIE_SECRET);
             final Cookie cookie = new Cookie(COOKIE_NAME, cookieValue);
-            cookie.setPath("/");
             cookie.setMaxAge(COOKIE_EXPIRY);
-            cookie.setHttpOnly(COOKIE_HTTP_ONLY);
+            cookie.setPath("/");
+            cookie.setHttpOnly(true);
             response.addCookie(cookie);
         } catch (final Exception e) {
             LOGGER.log(Level.WARN, "Can not write cookie", e);
@@ -335,11 +357,12 @@ public final class Solos {
      * @param response the specified response
      * @return {@code true} if succeed, otherwise returns {@code false}
      */
-    public static void logout(final HttpServletRequest request, final HttpServletResponse response) {
+    public static void logout(final Request request, final Response response) {
         if (null != response) {
-            final Cookie cookie = new Cookie(COOKIE_NAME, null);
+            final Cookie cookie = new Cookie(COOKIE_NAME, "");
             cookie.setMaxAge(0);
             cookie.setPath("/");
+            cookie.setHttpOnly(true);
             response.addCookie(cookie);
         }
     }
@@ -391,16 +414,19 @@ public final class Solos {
             return false;
         }
 
-        final HttpServletRequest request = context.getRequest();
+        final Request request = context.getRequest();
         if (null == request) {
             return true;
         }
 
-        final HttpSession session = request.getSession();
+        final Session session = request.getSession();
         if (null != session) {
-            Map<String, String> viewPwds = (Map<String, String>) session.getAttribute(Common.ARTICLES_VIEW_PWD);
-            if (null == viewPwds) {
-                viewPwds = new HashMap<>();
+            JSONObject viewPwds;
+            final String viewPwdsStr = session.getAttribute(Common.ARTICLES_VIEW_PWD);
+            if (null == viewPwdsStr) {
+                viewPwds = new JSONObject();
+            } else {
+                viewPwds = new JSONObject(viewPwdsStr);
             }
 
             if (articleViewPwd.equals(viewPwds.get(article.optString(Keys.OBJECT_ID)))) {
@@ -408,7 +434,7 @@ public final class Solos {
             }
         }
 
-        final HttpServletResponse response = context.getResponse();
+        final Response response = context.getResponse();
         final JSONObject currentUser = getCurrentUser(request, response);
 
         return !(null != currentUser && !Role.VISITOR_ROLE.equals(currentUser.optString(User.USER_ROLE)));
@@ -420,7 +446,7 @@ public final class Solos {
      * @param request the specified request
      * @return {@code true} if it is, returns {@code false} otherwise
      */
-    public static boolean isMobile(final HttpServletRequest request) {
+    public static boolean isMobile(final Request request) {
         final Object val = request.getAttribute(Keys.HttpRequest.IS_MOBILE_BOT);
         if (!(val instanceof Boolean)) {
             return false;
@@ -435,7 +461,7 @@ public final class Solos {
      * @param request the specified request
      * @return {@code true} if it is, returns {@code false} otherwise
      */
-    public static boolean isBot(final HttpServletRequest request) {
+    public static boolean isBot(final Request request) {
         final Object val = request.getAttribute(Keys.HttpRequest.IS_SEARCH_ENGINE_BOT);
         if (!(val instanceof Boolean)) {
             return false;

@@ -19,17 +19,13 @@ package org.b3log.solo.processor.console;
 
 import org.apache.commons.lang.StringUtils;
 import org.b3log.latke.Keys;
-import org.b3log.latke.model.User;
 import org.b3log.latke.repository.Query;
 import org.b3log.solo.AbstractTestCase;
-import org.b3log.solo.MockHttpServletRequest;
-import org.b3log.solo.MockHttpServletResponse;
+import org.b3log.solo.MockRequest;
+import org.b3log.solo.MockResponse;
 import org.json.JSONObject;
 import org.testng.Assert;
 import org.testng.annotations.Test;
-
-import java.io.BufferedReader;
-import java.io.StringReader;
 
 /**
  * {@link UserConsole} test case.
@@ -43,11 +39,9 @@ public class UserConsoleTestCase extends AbstractTestCase {
 
     /**
      * Init.
-     *
-     * @throws Exception exception
      */
     @Test
-    public void init() throws Exception {
+    public void init() {
         super.init();
     }
 
@@ -60,18 +54,17 @@ public class UserConsoleTestCase extends AbstractTestCase {
     public void updateUser() throws Exception {
         final JSONObject u = getUserRepository().getFirst(new Query());
 
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/user/");
         request.setMethod("PUT");
-        final BufferedReader reader = new BufferedReader(new StringReader(u.toString()));
-        request.setReader(reader);
+        request.setJSON(u);
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -85,15 +78,15 @@ public class UserConsoleTestCase extends AbstractTestCase {
         final JSONObject u = getUserRepository().getFirst(new Query());
         final String userId = u.optString(Keys.OBJECT_ID);
 
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/user/" + userId);
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -104,15 +97,15 @@ public class UserConsoleTestCase extends AbstractTestCase {
      */
     @Test(dependsOnMethods = "getUser")
     public void getUsers() throws Exception {
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/users/1/10/20");
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -126,15 +119,15 @@ public class UserConsoleTestCase extends AbstractTestCase {
         final JSONObject u = getUserRepository().getFirst(new Query());
         final String userId = u.optString(Keys.OBJECT_ID);
 
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/changeRole/" + userId);
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 
@@ -148,16 +141,16 @@ public class UserConsoleTestCase extends AbstractTestCase {
         final JSONObject u = getUserRepository().getFirst(new Query());
         final String userId = u.optString(Keys.OBJECT_ID);
 
-        final MockHttpServletRequest request = mockRequest();
+        final MockRequest request = mockRequest();
         request.setRequestURI("/console/user/" + userId);
         request.setMethod("DELETE");
 
         mockAdminLogin(request);
 
-        final MockHttpServletResponse response = mockResponse();
-        mockDispatcherServletService(request, response);
+        final MockResponse response = mockResponse();
+        mockDispatcher(request, response);
 
-        final String content = response.body();
+        final String content = response.getString();
         Assert.assertTrue(StringUtils.contains(content, "sc\":true"));
     }
 }
