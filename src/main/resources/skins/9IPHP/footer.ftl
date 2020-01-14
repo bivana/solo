@@ -22,11 +22,7 @@
     <a href="${servePath}">${blogTitle}</a>
     ${footerContent}
     <br/>
-    Powered by <a href="https://solo.b3log.org" target="_blank">Solo</a>
-    <span class="ft-warn">&heartsuit;</span>
-    Theme ${skinDirName}
-    <sup>[<a href="https://github.com/9IPHP/9IPHP" target="_blank">ref</a>]</sup>
-    by <a href="http://vanessa.b3log.org" target="_blank">Vanessa</a>
+    网站备案号： <a href="http://www.beian.miit.gov.cn" target="_blank">浙ICP备18022321号-1</a>
 </footer>
 <div class="icon-up" onclick="Util.goTop()"></div>
 <script src="${staticServePath}/js/lib/compress/pjax.min.js"></script>
