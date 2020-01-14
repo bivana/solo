@@ -220,11 +220,13 @@ public final class Skins {
             final Stream<Path> walk = Files.walk(resourcePath, 1);
             for (final Iterator<Path> it = walk.iterator(); it.hasNext(); ) {
                 final Path file = it.next().getFileName();
-                final String fileName = file.toString();
+                String fileName = file.toString();
+                if(fileName.endsWith("/")){
+                    fileName=fileName.substring(0,fileName.length()-1);
+                }
                 if (fileName.startsWith(".") || fileName.endsWith(".md") || "skins".equals(fileName)) {
                     continue;
                 }
-
                 ret.add(fileName);
             }
         } catch (final Exception e) {

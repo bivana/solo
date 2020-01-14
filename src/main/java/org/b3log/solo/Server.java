@@ -39,6 +39,7 @@ import org.b3log.solo.processor.*;
 import org.b3log.solo.processor.console.*;
 import org.b3log.solo.repository.OptionRepository;
 import org.b3log.solo.service.*;
+import org.b3log.solo.util.DesUtils;
 import org.b3log.solo.util.Markdowns;
 import org.json.JSONObject;
 
@@ -134,7 +135,7 @@ public final class Server extends BaseServer {
 
         String portArg = commandLine.getOptionValue("listen_port");
         if (!Strings.isNumeric(portArg)) {
-            portArg = "8080";
+            portArg = "8129";
         }
 
         try {
@@ -145,6 +146,18 @@ public final class Server extends BaseServer {
 
             System.exit(-1);
         }
+
+
+        try {
+            if(StringUtils.isNotEmpty(Latkes.getLocalProperty("jdbc.password"))){
+                DesUtils desUtils=new DesUtils();
+                Latkes.setLocalProperty("jdbc.password",desUtils.decrypt(Latkes.getLocalProperty("jdbc.password")));
+            }
+        } catch (final Exception e) {
+            LOGGER.log(Level.ERROR, "decrypt error",e);
+            System.exit(-1);
+        }
+
 
         String serverScheme = commandLine.getOptionValue("server_scheme");
         if (null != serverScheme) {
